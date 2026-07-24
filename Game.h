@@ -26,16 +26,14 @@ public:
     void mergeSort(Move list[], int n);//归并排序
     void mergePass(Move list[], Move t[], int s, int n);
     void merge(Move list[], Move t[], int l, int m, int r);
-    void AnalyHH();//评估，下之后的值（四个方向）-下之前的值（四个方向）
-    void AnalyVV();
-    void AnalyRR();
-    void AnalyLL();
+    void analyzeDir(int px, int py, int dx, int dy,
+                    int skipX, int skipY, int dirIdx);
     void AnalyFourConnect();//判断是活四还是眠四，数组对应增加
-    void resetFourVariable();//重置四个全局变量
+    void resetFourConnect();//重置四个方向的连四计数
     bool CheckWinningPatterns();//检查必胜棋型
     int estimate();
     void Comb(Move list[], int n);
-    bool contain(std::vector<QPoint>, QPoint);
+    bool contain(const std::vector<QPoint>&, QPoint) const;
     int type() const;
     void setType(int newType);
     void stepadd();//步数的增加和减少，在chequer对手操作时调用
@@ -58,14 +56,10 @@ public slots:
 private:
     int numberOfMyRoad[7]{ 0 };
     int numberOfEnemyRoad[7]{ 0 };
-    int scoreOfMyRoad[7]{ 0,1,5,30,110,20,100000 };
-    int scoreOfEnemyRoad[7]{ 0,10,40,80,5000,5000,100000 };
+    int scoreOfMyRoad[7]{ 0,1,5,30,120,3000,100000 };
+    int scoreOfEnemyRoad[7]{ 0,10,40,80,5000,6000,100000 };
     int scoreOfWinningChessPattern[2]{0, 2000};//形成必胜棋型的步额外加2000
-    int numberOfFourConnect[2]{0};//第一个数为眠四数，第二个数为活四数
-    int numberOfHHfourConnect[2]{0};//不同方向上四连的个数
-    int numberOfVVfourConnect[2]{0};
-    int numberOfRRfourConnect[2]{0};
-    int numberOfLLfourConnect[2]{0};
+    int m_fourConnect[4][2]{};//四个方向的眠四[0]/活四[1]计数: 0=横 1=竖 2=右斜 3=左斜
 
     int m_chess[19][19];//棋盘信息
     std::vector< QPoint>m_search;//搜索队列

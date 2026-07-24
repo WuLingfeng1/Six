@@ -5,14 +5,14 @@
 #include <QThread>
 using std::vector;
 
-int count=0;
-Move m_movelist[100000];//保存所有走法进行归并排序
+Move m_movelist[100000];//保存所有走法进行归并排序（19x19 棋盘 C(361,2)=64980，不会越界）
 Move m_target[100000];//排序要用到的
 
 
 Game::Game()
     :m_chess{{0}}
     ,m_step{0}
+    ,m_win{TIE}
     ,m_type{1}
 {
 
@@ -311,22 +311,7 @@ void Game::add(QPoint location, std::vector<QPoint> &lastAdd)
                 lastAdd.push_back(temp);
             }
         }
-        if (y + i >= 0 && y + i <= 18 && x + i >= 0 && x + i <= 18 && x - i >= 0 && x - i <= 18)
-        {
-            QPoint temp1 = { x + i ,y + i };
-            QPoint temp2 = { x - i ,y + i };
-            if (m_chess[x + i][y + i] == 0 && !contain(m_search, temp1))
-            {
-                m_search.push_back(temp1);
-                lastAdd.push_back(temp1);
-            }
-            if (m_chess[x - i][y + i] == 0 && !contain(m_search, temp2))
-            {
-                m_search.push_back(temp2);
-                lastAdd.push_back(temp2);
-            }
-        }
-        /*if (y + i >= 0 && y + i <= 18 && x + i >= 0 && x + i <= 18)
+        if (x + i >= 0 && x + i <= 18 && y + i >= 0 && y + i <= 18)
         {
             QPoint temp1 = { x + i ,y + i };
             if (m_chess[x + i][y + i] == 0 && !contain(m_search, temp1))
@@ -334,19 +319,16 @@ void Game::add(QPoint location, std::vector<QPoint> &lastAdd)
                 m_search.push_back(temp1);
                 lastAdd.push_back(temp1);
             }
-
         }
-
-        if (y + i >= 0 && y + i <= 18 && x - i >= 0 && x - i <= 18)
+        if (x - i >= 0 && x - i <= 18 && y + i >= 0 && y + i <= 18)
         {
             QPoint temp2 = { x - i ,y + i };
-
             if (m_chess[x - i][y + i] == 0 && !contain(m_search, temp2))
             {
                 m_search.push_back(temp2);
                 lastAdd.push_back(temp2);
             }
-        }*/
+        }
     }
 }
 
@@ -442,345 +424,55 @@ void Game::merge(Move list[], Move t[], int l, int m, int r)
             t[k++] = list[q];
 }
 
-void Game::AnalyHH()
+void Game::analyzeDir(int px, int py, int dx, int dy,
+                      int skipX, int skipY, int dirIdx)
 {
-    int x1 = m_last.x(), y1 = m_last.y();
-    int x2 = m_llast.x(), y2 = m_llast.y();
-    for (int i = y1 - 5 > 0 ? y1 - 5 : 0; i <= y1 && i + 5 < 19; i++)//横向
-    {
+    for (int k = 0; k <= 5; k++) {
+        int sx = px - k * dx;
+        int sy = py - k * dy;
+        bool valid = true;
+        for (int t = 0; t < 6; t++) {
+            int cx = sx + t * dx;
+            int cy = sy + t * dy;
+            if (cx < 0 || cx > 18 || cy < 0 || cy > 18) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) continue;
+        if (skipX >= 0) {
+            bool shared = false;
+            for (int t = 0; t < 6; t++) {
+                if (sx + t * dx == skipX && sy + t * dy == skipY) {
+                    shared = true;
+                    break;
+                }
+            }
+            if (shared) continue;
+        }
         int number = 0;
-        for (int j = 0; j < 6; j++)
-        {
-            if (m_chess[x1][i + j] == 2)
-                number += 7;
-            else
-                number += m_chess[x1][i + j];
+        for (int t = 0; t < 6; t++) {
+            int cx = sx + t * dx;
+            int cy = sy + t * dy;
+            int v = m_chess[cx][cy];
+            if (v == 2) number += 7;
+            else number += v;
         }
         if (number == 0 || (number > 6 && number % 7 != 0))
             continue;
-        if (number < 7)
-        {
+        if (number < 7) {
             if (m_type == 1) {
                 numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfHHfourConnect[0] += 1;
-            } else
+                if (number == 4) m_fourConnect[dirIdx][0]++;
+            } else {
                 numberOfEnemyRoad[number]++;
-
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-             else {
-                numberOfMyRoad[number / 7]++;
-                if (number / 7 == 4)
-                    numberOfHHfourConnect[0] += 1;
             }
-        }
-    }
-    for (int i = y2 - 5 > 0 ? y2 - 5 : 0; i <= y2 && i + 5 < 19; i++)//横向
-    {
-        int number = 0;
-        if ((i == y1 || i + 1 == y1 || i + 2 == y1 || i + 3 == y1 || i + 4 == y1 || i + 5 == y1) && x1 == x2)
-            continue;
-        for (int j = 0; j < 6; j++)
-        {
-            if (m_chess[x2][i + j] == 2)
-                number += 7;
-            else
-                number += m_chess[x2][i + j];
-        }
-        if (number == 0 ||( number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
+        } else {
             if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfHHfourConnect[0] += 1;
-            } else
-                numberOfEnemyRoad[number]++;
-
-        }
-        else
-        {
-            if (m_type == 1)
                 numberOfEnemyRoad[number / 7]++;
-            else {
+            } else {
                 numberOfMyRoad[number / 7]++;
-                if(number / 7 == 4)
-                    numberOfHHfourConnect[0] += 1;
-            }
-        }
-    }
-}
-
-void Game::AnalyVV()
-{
-    int x1 = m_last.x(), y1 = m_last.y();
-    int x2 = m_llast.x(), y2 = m_llast.y();
-    for (int i = x1 - 5 > 0 ? x1 - 5 : 0; i <= x1 && i + 5 < 19; i++)//竖向
-    {
-        int number = 0;
-        for (int j = 0; j < 6; j++)
-        {
-            if (m_chess[i + j][y1] == 2)
-                number += 7;
-            else
-                number += m_chess[i + j][y1];
-        }
-        if (number == 0 ||( number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfVVfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if (number / 7 == 4)
-                    numberOfVVfourConnect[0] += 1;
-            }
-        }
-    }
-    for (int i = x2 - 5 > 0 ? x2 - 5 : 0; i <= x2 && i + 5 < 19; i++)//竖向
-    {
-        int number = 0;
-        if ((i == x1 || i + 1 == x1 || i + 2 == x1 || i + 3 == x1 || i + 4 == x1 || i + 5 == x1) && y1 == y2)
-            continue;
-        for (int j = 0; j < 6; j++)
-        {
-            if (m_chess[i + j][y2] == 2)
-                number += 7;
-            else
-                number += m_chess[i + j][y2];
-        }
-        if (number == 0 ||( number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfVVfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if (number == 4)
-                    numberOfVVfourConnect[0] += 1;
-            }
-        }
-    }
-}
-
-void Game::AnalyRR()
-{
-    int x1 = m_last.x(), y1 = m_last.y();
-    int x2 = m_llast.x(), y2 = m_llast.y();
-    int i, j;
-    if (x1 - 5 < 0 || y1 - 5 < 0)
-    {
-        int t = std::min(x1, y1);
-        i = x1 - t;
-        j = y1 - t;
-    }
-    else
-    {
-        i = x1 - 5;
-        j = y1 - 5;
-    }
-    for (; i <= x1 && i + 5 < 19 && j <= y1 && j + 5 < 19; i++, j++)//左向
-    {
-        int number = 0;
-        for (int k = 0; k < 6; k++)
-        {
-            if (m_chess[i + k][j + k] == 2)
-                number += 7;
-            else
-                number += m_chess[i + k][j + k];
-        }
-        if (number == 0 || (number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfRRfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if (number / 7 == 4)
-                    numberOfRRfourConnect[0] += 1;
-            }
-        }
-    }
-    if (x2 - 5 < 0 || y2 - 5 < 0)
-    {
-        int t = std::min(x2, y2);
-        i = x2 - t;
-        j = y2 - t;
-    }
-    else
-    {
-        i = x2 - 5;
-        j = y2 - 5;
-    }
-    for (; i <= x2 && i + 5 < 19 && j <= y2 && j + 5 < 19; i++, j++)//左向
-    {
-        int number = 0;
-        if ((i == x1 && j == y1 )|| (i + 1 == x1 && j + 1 == y1 )||( i + 2 == x1 && j + 2 == y1) || (i + 3 == x1 && j + 3 == y1) || (i + 4 == x1 && j + 4 == y1 )|| (i + 5 == x1 && j + 5 == y1))
-            continue;
-        for (int k = 0; k < 6; k++)
-        {
-            if (m_chess[i + k][j + k] == 2)
-                number += 7;
-            else
-                number += m_chess[i + k][j + k];
-        }
-        if (number == 0 ||( number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if(number == 4)
-                    numberOfRRfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if(number / 7 == 4)
-                    numberOfRRfourConnect[0] += 1;
-            }
-        }
-    }
-}
-
-void Game::AnalyLL()
-{
-    int x1 = m_last.x(), y1 = m_last.y();
-    int x2 = m_llast.x(), y2 = m_llast.y();
-    int i, j;
-    if (x1 - 5 < 0 || y1 + 5 > 18)
-    {
-        int t = std::min(x1, 18 - y1);
-        i = x1 - t;
-        j = y1 + t;
-    }
-    else
-    {
-        i = x1 - 5;
-        j = y1 + 5;
-    }
-    for (;
-         i <= x1 && i + 5 < 19 && j >= y1 && j - 5 >= 0; i++, j--)//右向
-    {
-        int number = 0;
-        for (int k = 0; k < 6; k++)
-        {
-            if (m_chess[i + k][j - k] == 2)
-                number += 7;
-            else
-                number += m_chess[i + k][j - k];
-        }
-        if (number == 0 ||(number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if (number == 4)
-                    numberOfLLfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if (number / 7 == 4)
-                    numberOfLLfourConnect[0] += 1;
-            }
-        }
-    }
-    if (x2 - 5 < 0 || y2 + 5 > 18)
-    {
-        int t = std::min(x2, 18 - y2);
-        i = x2 - t;
-        j = y2 + t;
-    }
-    else
-    {
-        i = x2 - 5;
-        j = y2 + 5;
-    }
-    for (;
-         i <= x2 && i + 5 < 19 && j >= y2 && j - 5 >= 0; i++, j--)//右向
-    {
-        int number = 0;
-        if ((i == x1 && j == y1 )|| (i + 1 == x1 && j - 1 == y1) || (i + 2 == x1 && j - 2 == y1) ||( i + 3 == x1 && j - 3 == y1) || (i + 4 == x1 && j - 4 == y1 )|| (i + 5 == x1 && j - 5 == y1))
-            continue;
-        for (int k = 0; k < 6; k++)
-        {
-            if (m_chess[i + k][j - k] == 2)
-                number += 7;
-            else
-                number += m_chess[i + k][j - k];
-        }
-        if (number == 0 || (number > 6 && number % 7 != 0))
-            continue;
-        if (number < 7)
-        {
-            if (m_type == 1) {
-                numberOfMyRoad[number]++;
-                if(number == 4)
-                    numberOfLLfourConnect[0] += 1;
-            }
-            else
-                numberOfEnemyRoad[number]++;
-        }
-        else
-        {
-            if (m_type == 1)
-                numberOfEnemyRoad[number / 7]++;
-            else {
-                numberOfMyRoad[number / 7]++;
-                if (number / 7 ==4)
-                    numberOfLLfourConnect[0] += 1;
+                if (number / 7 == 4) m_fourConnect[dirIdx][0]++;
             }
         }
     }
@@ -793,14 +485,14 @@ void Game::AnalyFourConnect()
 
     //判断是否为活四
     if (numberOfMyRoad[4] > 0) {
-        if (numberOfHHfourConnect[0] > 0) {
+        if (m_fourConnect[0][0] > 0) {
             for (int i = y1 - 5 > 0 ? y1 - 5 : 0; i <= y1 && i + 7 < 19; i++) {
                 if (m_chess[x1][i] == m_chess[x1][i + 1] && m_chess[x1][i + 1] == m_chess[x1][i + 6]
                     && m_chess[x1][i + 6] == m_chess[x1][i + 7] && m_chess[x1][i + 7] == 0
                     && m_chess[x1][i + 2] == m_chess[x1][i + 3] && m_chess[x1][i + 3] == m_chess[x1][i + 4]
                     && m_chess[x1][i + 4] == m_chess[x1][i + 5]
                     && (m_chess[x1][i + 5] == 1 || m_chess[x1][i + 5] == 2)) {
-                    numberOfHHfourConnect[1] += 1;
+                    m_fourConnect[0][1] += 1;
                     qDebug() << "cunzaihuosiHH1";
                 }
             }
@@ -810,20 +502,20 @@ void Game::AnalyFourConnect()
                     && m_chess[x2][i + 2] == m_chess[x2][i + 3] && m_chess[x2][i + 3] == m_chess[x2][i + 4]
                     && m_chess[x2][i + 4] == m_chess[x2][i + 5]
                     && (m_chess[x2][i + 5] == 1 || m_chess[x2][i + 5] == 2)) {
-                    numberOfHHfourConnect[1] += 1;
+                    m_fourConnect[0][1] += 1;
                     qDebug() << "cunzaihuosiHH2";
                 }
             }
         }
 
-        if (numberOfVVfourConnect[0] > 0) {
+        if (m_fourConnect[1][0] > 0) {
             for (int i = x1 - 5 > 0 ? x1 - 5 : 0; i <= x1 && i + 7 < 19; i++) {
                 if (m_chess[i][y1] == m_chess[i + 1][y1] && m_chess[i + 1][y1] == m_chess[i + 6][y1]
                     && m_chess[i + 6][y1] == m_chess[i + 7][y1] && m_chess[i + 7][y1] == 0
                     && m_chess[i + 2][y1] == m_chess[i + 3][y1] && m_chess[i + 3][y1] == m_chess[i + 4][y1]
                     && m_chess[i + 4][y1] == m_chess[i + 5][y1]
                     && (m_chess[i + 5][y1] == 1 || m_chess[i + 5][y1] == 2)) {
-                    numberOfVVfourConnect[1] += 1;
+                    m_fourConnect[1][1] += 1;
                     qDebug() << "cunzaihuosiVV1";
                 }
             }
@@ -833,13 +525,13 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 2][y2] == m_chess[i + 3][y2] && m_chess[i + 3][y2] == m_chess[i + 4][y2]
                     && m_chess[i + 4][y2] == m_chess[i + 5][y2]
                     && (m_chess[i + 5][y2] == 1 || m_chess[i + 5][y2] == 2)) {
-                    numberOfVVfourConnect[1] += 1;
+                    m_fourConnect[1][1] += 1;
                     qDebug() << "cunzaihuosiVV2";
                 }
             }
         }
 
-        if (numberOfRRfourConnect[0] > 0) {
+        if (m_fourConnect[2][0] > 0) {
             int i, j;
             if (x1 - 5 < 0 || y1 - 5 < 0) {
                 int t = std::min(x1, y1);
@@ -855,7 +547,7 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 2][j + 2] == m_chess[i + 3][j + 3] && m_chess[i + 3][j + 3] == m_chess[i + 4][j + 4]
                     && m_chess[i + 4][j + 4] == m_chess[i + 5][j + 5]
                     && (m_chess[i + 5][j + 5] == 1 || m_chess[i + 5][j + 5] == 2)) {
-                    numberOfRRfourConnect[1] += 1;
+                    m_fourConnect[2][1] += 1;
                     qDebug() << "cunzaihuosiRR1";
                 }
             }
@@ -876,13 +568,13 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 2][j + 2] == m_chess[i + 3][j + 3] && m_chess[i + 3][j + 3] == m_chess[i + 4][j + 4]
                     && m_chess[i + 4][j + 4] == m_chess[i + 5][j + 5]
                     && (m_chess[i + 5][j + 5] == 1 || m_chess[i + 5][j + 5] == 2)) {
-                    numberOfRRfourConnect[1] += 1;
+                    m_fourConnect[2][1] += 1;
                     qDebug() << "cunzaihuosiRR2";
                 }
             }
         }
 
-        if (numberOfLLfourConnect[0] > 0) {
+        if (m_fourConnect[3][0] > 0) {
             int i, j;
             if (x1 - 5 < 0 || y1 + 5 > 18)
             {
@@ -901,7 +593,7 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 2][j - 2] == m_chess[i + 3][j - 3] && m_chess[i + 3][j - 3] == m_chess[i + 4][j - 4]
                     && m_chess[i + 4][j - 4] == m_chess[i + 5][j - 5]
                     && (m_chess[i + 5][j - 5] == 1 || m_chess[i + 5][j - 5] == 2)) {
-                    numberOfLLfourConnect[1] += 1;
+                    m_fourConnect[3][1] += 1;
                     qDebug() << "cunzaihuosiLL1";
                 }
             }
@@ -922,7 +614,7 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 2][j - 2] == m_chess[i + 3][j - 3] && m_chess[i + 3][j - 3] == m_chess[i + 4][j - 4]
                     && m_chess[i + 4][j - 4] == m_chess[i + 5][j - 5]
                     && (m_chess[i + 5][j - 5] == 1 || m_chess[i + 5][j - 5] == 2)) {
-                    numberOfLLfourConnect[1] += 1;
+                    m_fourConnect[3][1] += 1;
                     qDebug() << "cunzaihuosiLL2";
                 }
             }
@@ -935,51 +627,25 @@ void Game::AnalyFourConnect()
 
 bool Game::CheckWinningPatterns()
 {
-    int number = 0;
-    int HH = 0;
-    int VV = 0;
-    int RR = 0;
-    int LL = 0;
-    if (numberOfHHfourConnect[1] > 0) {
-        number++;
-        HH++;
-    }
-    if (numberOfVVfourConnect[1] > 0) {
-        number++;
-        VV++;
-    }
-    if (numberOfRRfourConnect[1] > 0) {
-        number++;
-        RR++;
-    }
-    if (numberOfLLfourConnect[1] > 0) {
-        number++;
-        LL++;
-    }
-    if (number >= 2) return true;
-
-    if (number == 1) {
-        if (HH > 0 && (numberOfVVfourConnect[0] > 0 || numberOfRRfourConnect[0] > 0 || numberOfLLfourConnect[0] > 0))
-            return true;
-        if (VV > 0 && (numberOfHHfourConnect[0] > 0 || numberOfRRfourConnect[0] > 0 || numberOfLLfourConnect[0] > 0))
-            return true;
-        if (RR > 0 && (numberOfVVfourConnect[0] > 0 || numberOfHHfourConnect[0] > 0 || numberOfLLfourConnect[0] > 0))
-            return true;
-        if (LL > 0 && (numberOfHHfourConnect[0] > 0 || numberOfRRfourConnect[0] > 0 || numberOfVVfourConnect[0] > 0))
-            return true;
+    int liveCount = 0;
+    for (int d = 0; d < 4; d++)
+        if (m_fourConnect[d][1] > 0) liveCount++;
+    if (liveCount >= 2) return true;
+    if (liveCount == 1) {
+        for (int d = 0; d < 4; d++) {
+            if (m_fourConnect[d][1] == 0) continue;
+            for (int e = 0; e < 4; e++)
+                if (e != d && m_fourConnect[e][0] > 0) return true;
+        }
     }
     return false;
 }
 
-void Game::resetFourVariable()
+void Game::resetFourConnect()
 {
-    for(int i = 0;i<2;i++) {
-    numberOfHHfourConnect[i] = 0;
-    numberOfLLfourConnect[i] = 0;
-    numberOfRRfourConnect[i] = 0;
-    numberOfVVfourConnect[i] = 0;
-    numberOfFourConnect[i] = 0;
-    }
+    for (int d = 0; d < 4; d++)
+        for (int i = 0; i < 2; i++)
+            m_fourConnect[d][i] = 0;
 }
 
 int Game::estimate()
@@ -988,41 +654,38 @@ int Game::estimate()
     int x1 = m_last.x(), y1 = m_last.y();
     int x2 = m_llast.x(), y2 = m_llast.y();
     int type = m_chess[x1][y1];
-    m_chess[x1][y1] = 0;//清除落子
-    m_chess[x2][y2] = 0;//清除落子
-    resetFourVariable();
-    for (int i = 0; i < 7; i++)
-    {
+    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+
+    m_chess[x1][y1] = 0;
+    m_chess[x2][y2] = 0;
+    for (int i = 0; i < 7; i++) {
         numberOfMyRoad[i] = 0;
         numberOfEnemyRoad[i] = 0;
     }
-    AnalyHH();
-    AnalyVV();
-    AnalyRR();
-    AnalyLL();
-    //qDebug() << "HH" << numberOfHHfourConnect << "VV" << numberOfVVfourConnect << "LL" << numberOfLLfourConnect << "RR"
-    //         << numberOfRRfourConnect;
-    //AnalyFourConnect();
+    for (int d = 0; d < 4; d++) {
+        analyzeDir(x1, y1, DIR[d][0], DIR[d][1], -1, -1, d);
+        analyzeDir(x2, y2, DIR[d][0], DIR[d][1], x1, y1, d);
+    }
     for (int i = 1; i <= 6; i++)
         pre += numberOfMyRoad[i] * scoreOfMyRoad[i] - numberOfEnemyRoad[i] * scoreOfEnemyRoad[i];
-    resetFourVariable();
+
+    resetFourConnect();
     m_chess[x1][y1] = type;
     m_chess[x2][y2] = type;
-    for (int i = 0; i < 7; i++)
-    {
+    for (int i = 0; i < 7; i++) {
         numberOfMyRoad[i] = 0;
         numberOfEnemyRoad[i] = 0;
     }
-    AnalyHH();
-    AnalyVV();
-    AnalyRR();
-    AnalyLL();
+    for (int d = 0; d < 4; d++) {
+        analyzeDir(x1, y1, DIR[d][0], DIR[d][1], -1, -1, d);
+        analyzeDir(x2, y2, DIR[d][0], DIR[d][1], x1, y1, d);
+    }
     AnalyFourConnect();
     for (int i = 1; i <= 6; i++)
         after += numberOfMyRoad[i] * scoreOfMyRoad[i] - numberOfEnemyRoad[i] * scoreOfEnemyRoad[i];
-    if (CheckWinningPatterns() == true)
+    if (CheckWinningPatterns())
         after += scoreOfWinningChessPattern[1];
-    resetFourVariable();
+    resetFourConnect();
     return after - pre;
 }
 bool hasDone(vector<bool>index, int n, int k)
@@ -1098,10 +761,9 @@ void Game::Comb(Move list[], int n)
     mergeSort(list, m_count);
 }
 
-bool Game::contain(std::vector<QPoint>m_search, QPoint value)
+bool Game::contain(const std::vector<QPoint>& points, QPoint value) const
 {
-
-    for (vector<QPoint>::iterator it = m_search.begin(); it != m_search.end(); it++)
+    for (auto it = points.begin(); it != points.end(); ++it)
     {
         if ((*it) == value)
             return true;
