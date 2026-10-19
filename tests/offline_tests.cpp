@@ -128,19 +128,33 @@ bool exactSafe(const Referee &before, QPoint a, QPoint b, int color) {
     }
     return true;
 }
-int fullScore(const Referee &position, int color, const int *weights) {
+static int lineShapeTest(int run, int open) {
+    if (run >= 6) return 100000;
+    if (run == 5) return open >= 1 ? 60000 : 0;
+    if (run == 4) return open == 2 ? 20000 : (open == 1 ? 3000 : 0);
+    if (run == 3) return open == 2 ? 1000 : (open == 1 ? 100 : 0);
+    if (run == 2) return open == 2 ? 20 : 0;
+    return 1;
+}
+int fullScore(const Referee &position, int color, const int *) {
     int score = 0;
     for (int x = 0; x < 19; ++x)
         for (int y = 0; y < 19; ++y)
             for (QPoint d : {QPoint(1, 0), QPoint(0, 1), QPoint(1, 1), QPoint(1, -1)}) {
-                if (!Referee::inside(QPoint(x, y) + d * 5)) continue;
-                int own = 0, enemy = 0;
-                for (int k = 0; k < 6; ++k) {
-                    QPoint p = QPoint(x, y) + d * k;
-                    own += position.board[p.x()][p.y()] == color;
-                    enemy += position.board[p.x()][p.y()] == 3 - color;
+                const int c = position.board[x][y];
+                if (!c) continue;
+                const QPoint prev = QPoint(x, y) - d;
+                if (Referee::inside(prev) && position.board[prev.x()][prev.y()] == c) continue;
+                int run = 0;
+                QPoint cur(x, y);
+                while (Referee::inside(cur) && position.board[cur.x()][cur.y()] == c) {
+                    run++;
+                    cur = cur + d;
                 }
-                if (!own || !enemy) score += weights[own] - weights[enemy];
+                int open = 0;
+                if (Referee::inside(prev) && position.board[prev.x()][prev.y()] == 0) open++;
+                if (Referee::inside(cur) && position.board[cur.x()][cur.y()] == 0) open++;
+                score += (c == color) ? lineShapeTest(run, open) : -lineShapeTest(run, open);
             }
     return score;
 }

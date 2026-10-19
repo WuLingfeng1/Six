@@ -618,35 +618,43 @@ quint64 Game::boardHash() const
     return h;
 }
 
+static int lineShape(int run, int open)
+{
+    if (run >= 6) return 100000;
+    if (run == 5) return open >= 1 ? 60000 : 0;
+    if (run == 4) return open == 2 ? 20000 : (open == 1 ? 3000 : 0);
+    if (run == 3) return open == 2 ? 1000 : (open == 1 ? 100 : 0);
+    if (run == 2) return open == 2 ? 20 : 0;
+    return 1;
+}
+
 int Game::evaluateBoard()
 {
-    int score = 0;
-    int numberOfMyRoad[7]{}, numberOfEnemyRoad[7]{};
     const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    int score = 0;
     for (int x = 0; x < 19; x++) {
         for (int y = 0; y < 19; y++) {
+            const int c = m_chess[x][y];
+            if (c == 0) continue;
             for (int d = 0; d < 4; d++) {
-                int dx = DIR[d][0], dy = DIR[d][1];
-                if (x + 5 * dx < 0 || x + 5 * dx >= 19) continue;
-                if (y + 5 * dy < 0 || y + 5 * dy >= 19) continue;
-                int number = 0;
-                for (int t = 0; t < 6; t++) {
-                    int v = m_chess[x + t * dx][y + t * dy];
-                    if (v == 2) number += 7; else number += v;
+                const int dx = DIR[d][0], dy = DIR[d][1];
+                const int px = x - dx, py = y - dy;
+                if (px >= 0 && px < 19 && py >= 0 && py < 19 && m_chess[px][py] == c)
+                    continue;
+                int run = 0, cx = x, cy = y;
+                while (cx >= 0 && cx < 19 && cy >= 0 && cy < 19 && m_chess[cx][cy] == c) {
+                    run++;
+                    cx += dx;
+                    cy += dy;
                 }
-                if (number == 0 || (number > 6 && number % 7 != 0)) continue;
-                if (number < 7) {
-                    if (m_type == 1) numberOfMyRoad[number]++;
-                    else numberOfEnemyRoad[number]++;
-                } else {
-                    if (m_type == 1) numberOfEnemyRoad[number / 7]++;
-                    else numberOfMyRoad[number / 7]++;
-                }
+                const bool open1 = (px >= 0 && px < 19 && py >= 0 && py < 19 && m_chess[px][py] == 0);
+                const bool open2 = (cx >= 0 && cx < 19 && cy >= 0 && cy < 19 && m_chess[cx][cy] == 0);
+                const int open = (open1 ? 1 : 0) + (open2 ? 1 : 0);
+                const int shape = lineShape(run, open);
+                score += (c == m_type) ? shape : -shape;
             }
         }
     }
-    for (int i = 1; i <= 6; i++)
-        score += (numberOfMyRoad[i] - numberOfEnemyRoad[i]) * scoreOfMyRoad[i];
     return score;
 }
 
@@ -657,38 +665,19 @@ int Game::evaluatePoint(int x, int y, int piece)
 
 int Game::evaluatePair(QPoint a, QPoint b, int piece)
 {
+    const int savedType = m_type;
+    m_type = piece;
     const int ax = a.x(), ay = a.y(), bx = b.x(), by = b.y();
-    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
-    auto deltaAt = [&](int px, int py, bool skipShared) {
-        int delta = 0;
-        for (const auto& dir : DIR) {
-            const int dx = dir[0], dy = dir[1];
-            int sx = px, sy = py;
-            for (int k = 0; k < 6; ++k, sx -= dx, sy -= dy) {
-                int ex = sx + 5 * dx, ey = sy + 5 * dy;
-                if (sx < 0 || sx >= 19 || sy < 0 || sy >= 19 ||
-                    ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
-                int own = 0, enemy = 0, added = 0;
-                bool shared = false;
-                int cx = sx, cy = sy;
-                for (int t = 0; t < 6; ++t, cx += dx, cy += dy) {
-                    const bool atA = cx == ax && cy == ay;
-                    if (atA) shared = true;
-                    int v = m_chess[cx][cy];
-                    if (v == piece) ++own;
-                    else if (v != 0) ++enemy;
-                    else if (atA || (cx == bx && cy == by)) ++added;
-                }
-                // Count windows touching both stones only once, with both added.
-                if (skipShared && shared) continue;
-                const int before = own && enemy ? 0 : scoreOfMyRoad[own] - scoreOfMyRoad[enemy];
-                const int after = (own + added) && enemy ? 0 : scoreOfMyRoad[own + added] - scoreOfMyRoad[enemy];
-                delta += after - before;
-            }
-        }
-        return delta;
-    };
-    return deltaAt(ax, ay, false) + (ax == bx && ay == by ? 0 : deltaAt(bx, by, true));
+    const bool emptyA = (m_chess[ax][ay] == 0);
+    const bool emptyB = (m_chess[bx][by] == 0);
+    const int before = evaluateBoard();
+    if (emptyA) m_chess[ax][ay] = piece;
+    if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = piece;
+    const int after = evaluateBoard();
+    if (emptyA) m_chess[ax][ay] = 0;
+    if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = 0;
+    m_type = savedType;
+    return after - before;
 }
 
 bool Game::hasSix(int x, int y, int piece)
