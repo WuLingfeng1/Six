@@ -3,6 +3,8 @@
 #include"vector"
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <random>
 #include <QString>
 #include <QMessageBox>
 #include <QThread>
@@ -12,15 +14,19 @@ namespace {
 constexpr int INF = 1000000000;      // 搜索正/负无穷
 constexpr int WIN_SCORE = 100000000; // 已成六连（必胜）的评分
 constexpr int WIN_THRESHOLD = 80000; // estimate 返回超过此值视为直接杀棋
-constexpr qint64 DEFAULT_TIME_LIMIT_MS = 2000; // 单步搜索时限
-constexpr qint64 PROBE_BUDGET_MS = 1100;
-constexpr qint64 PROBE_DISCOVERY_MS = 200;
-constexpr int PROBE_POINTS = 28;
-constexpr int PROBE_REPLIES = 32;
-constexpr int Q_MAX_PLY = 2;
-constexpr int Q_MAX_NODES = 1024;
-constexpr int Q_MAX_DEFENSES = 16;
 
+}
+
+Game::SearchConfig Game::searchConfig;
+
+static std::mt19937& searchRng()
+{
+    static std::mt19937 rng(std::random_device{}());
+    return rng;
+}
+void Game::seedRandom(unsigned seed)
+{
+    searchRng() = std::mt19937(seed);
 }
 
 Game::Game()
@@ -28,7 +34,7 @@ Game::Game()
     , m_step{0}
     , m_win{TIE}
     , m_type{1}
-    , m_timeLimitMs{DEFAULT_TIME_LIMIT_MS}
+    , m_timeLimitMs{searchConfig.timeLimitMs}
     , m_timedOut{false}
 {
     m_search.reserve(361);
@@ -895,9 +901,9 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
     m_type = pieceType;
 
     std::vector<Move> cands;
-    const bool extend = qply < Q_MAX_PLY && m_qNodes < Q_MAX_NODES;
+    const bool extend = qply < searchConfig.qMaxPly && m_qNodes < searchConfig.qMaxNodes;
     int tactic = depth == 0 ? tacticalMoves(pieceType, cands, 2, extend) :
-                 generateCandidates(pieceType, cands, 18, (depth >= 2 ? 35 : 20));
+                 generateCandidates(pieceType, cands, searchConfig.innerPoints, (depth >= 2 ? searchConfig.innerPairsDeep : searchConfig.innerPairsShallow));
     if (tactic == -2 || timedOut()) {
         m_type = savedType;
         return 0;
@@ -922,7 +928,7 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
         std::sort(cands.begin(), cands.end(),
                   [](const Move& a, const Move& b) { return a.score() > b.score(); });
         if (timedOut()) { m_type = savedType; return 0; }
-        if (cands.size() > Q_MAX_DEFENSES) cands.resize(Q_MAX_DEFENSES);
+        if (static_cast<int>(cands.size()) > searchConfig.qMaxDefenses) cands.resize(searchConfig.qMaxDefenses);
     }
 
     std::vector<QPoint> savedSearch = m_search;
@@ -980,7 +986,7 @@ void Game::bestPlay(int stonesRemaining)
     int oppPiece = (myPiece == 1) ? 2 : 1;
 
     m_timer.start();
-    m_timeLimitMs = DEFAULT_TIME_LIMIT_MS;
+    m_timeLimitMs = searchConfig.timeLimitMs;
     m_timedOut = false;
     m_qNodes = 0;
 
@@ -991,7 +997,7 @@ void Game::bestPlay(int stonesRemaining)
     const std::vector<QPoint> originalSearch = m_search;
     rebuildSearch();
     std::vector<Move> root;
-    int rootTactic = generateCandidates(myPiece, root, 40, 25, stonesRemaining);
+    int rootTactic = generateCandidates(myPiece, root, searchConfig.rootMaxPoints, searchConfig.rootMaxPairs, stonesRemaining);
 
     m_last = savedLastG; m_llast = savedLLastG;
     m_type = savedType;
@@ -1028,7 +1034,7 @@ void Game::bestPlay(int stonesRemaining)
     std::vector<Move> exactSafeMoves;
     if (rootTactic == 2) {
         exactDefenseHandled = true;
-        const qint64 exactDeadline = std::min(PROBE_BUDGET_MS, m_timeLimitMs);
+        const qint64 exactDeadline = std::min(searchConfig.probeBudgetMs, m_timeLimitMs);
         const std::vector<QPoint> exactSearch = m_search;
         const QPoint exactLast = m_last, exactLLast = m_llast;
         const int exactType = m_type;
@@ -1196,7 +1202,7 @@ void Game::bestPlay(int stonesRemaining)
                  << "refuted:" << exactRefuted << "replies:" << exactReplies
                  << "elapsedMs:" << m_timer.elapsed();
     }
-    qint64 probeDeadline = std::min(PROBE_DISCOVERY_MS, m_timeLimitMs);
+    qint64 probeDeadline = std::min(searchConfig.probeDiscoveryMs, m_timeLimitMs);
     const auto probe = [&](const Move& mv, bool witnessOnly) {
         if (timedOut() || m_timer.elapsed() >= probeDeadline) return -2;
         ++probeCount;
@@ -1241,11 +1247,11 @@ void Game::bestPlay(int stonesRemaining)
                     std::vector<Move> replies;
                     auto search = m_search;
                     rebuildSearch();
-                    int replyTactic = generateCandidates(oppPiece, replies, PROBE_POINTS,
-                                                         PROBE_REPLIES, 2, probeDeadline);
+                    int replyTactic = generateCandidates(oppPiece, replies, searchConfig.probePoints,
+                                                         searchConfig.probeReplies, 2, probeDeadline);
                     m_search = std::move(search);
                     if (replyTactic == -2) result = -2;
-                    if (replies.size() > PROBE_REPLIES) replies.resize(PROBE_REPLIES);
+                    if (static_cast<int>(replies.size()) > searchConfig.probeReplies) replies.resize(searchConfig.probeReplies);
                     if (result == 0)
                         for (const Move& reply : replies) {
                             result = checkReply(reply);
@@ -1276,7 +1282,7 @@ void Game::bestPlay(int stonesRemaining)
         }
         // Reserve time to propagate discovered counterexamples to other root
         // groups, including ones not reached by the expensive reply ranking.
-        probeDeadline = std::min(PROBE_BUDGET_MS, m_timeLimitMs);
+        probeDeadline = std::min(searchConfig.probeBudgetMs, m_timeLimitMs);
         if (!witnesses.empty())
             for (size_t i = 0; i < root.size(); ++i) {
                 if (refuted[i]) continue;
@@ -1350,11 +1356,14 @@ void Game::bestPlay(int stonesRemaining)
                     rootTactic == -1 ? -WIN_SCORE : -INF;
     Move bestMove = root[0];
 
-    const int maxDepth = 6;
+    const int maxDepth = searchConfig.maxDepth;
     int completedDepth = 0;
+    std::vector<Move> scoredRoot;
     for (int depth = 1; rootTactic != 1 && rootTactic != -1 && depth <= maxDepth; depth++) {
         int iterBestScore = -INF;
         Move iterBest = bestMove;
+        std::vector<Move> iterScores;
+        iterScores.reserve(root.size());
 
         auto pv = std::find_if(root.begin(), root.end(), [&](const Move& mv) {
             return mv.step1() == bestMove.step1() && mv.step2() == bestMove.step2();
@@ -1386,6 +1395,7 @@ void Game::bestPlay(int stonesRemaining)
             m_search = savedSearch;
 
             if (timedOut()) break;
+            iterScores.emplace_back(a, b, score);
             if (score > iterBestScore) {
                 iterBestScore = score;
                 iterBest = Move(a, b, score);
@@ -1398,6 +1408,7 @@ void Game::bestPlay(int stonesRemaining)
         bestScore = iterBestScore;
         bestMove = iterBest;
         completedDepth = depth;
+        scoredRoot = std::move(iterScores);
 
         // 若已找到必胜走法，提前结束
         if (bestScore >= WIN_SCORE)
@@ -1416,6 +1427,32 @@ void Game::bestPlay(int stonesRemaining)
             bestMove = exactSafeMoves.front();
             bestScore = evaluatePair(bestMove.step1(), bestMove.step2(), myPiece);
         }
+    }
+
+    if (searchConfig.randomize && exactSafeMoves.empty()
+        && rootTactic != 1 && rootTactic != -1 && bestScore < WIN_SCORE
+        && scoredRoot.size() > 1) {
+        std::sort(scoredRoot.begin(), scoredRoot.end(),
+                  [](const Move& a, const Move& b) { return a.score() > b.score(); });
+        const int topN = std::min<int>(searchConfig.randomTopN, static_cast<int>(scoredRoot.size()));
+        const double temp = searchConfig.randomTemp > 0.0 ? searchConfig.randomTemp : 1.0;
+        const int bestSc = scoredRoot[0].score();
+        std::vector<double> weights(topN);
+        double total = 0.0;
+        for (int i = 0; i < topN; ++i) {
+            weights[i] = std::exp(double(scoredRoot[i].score() - bestSc) / temp);
+            total += weights[i];
+        }
+        std::uniform_real_distribution<double> dist(0.0, total);
+        double r = dist(searchRng());
+        double acc = 0.0;
+        int pick = 0;
+        for (int i = 0; i < topN; ++i) {
+            acc += weights[i];
+            if (r <= acc) { pick = i; break; }
+        }
+        bestMove = scoredRoot[pick];
+        bestScore = bestMove.score();
     }
 
     m_type = savedType;

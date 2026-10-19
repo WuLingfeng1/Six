@@ -25,6 +25,39 @@ void captureDepth(QtMsgType, const QMessageLogContext &, const QString &message)
     const auto match = QRegularExpression("Search completedDepth: (\\d+)").match(message);
     if (match.hasMatch()) completedDepth = match.captured(1).toInt();
 }
+void applySearchConfig(const QStringList &a) {
+    const auto readInt = [&](const char *key, int &field) {
+        const int i = a.indexOf(QString::fromLatin1(key));
+        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const int v = a[i + 1].toInt(&ok); if (ok) field = v; }
+    };
+    const auto readI64 = [&](const char *key, qint64 &field) {
+        const int i = a.indexOf(QString::fromLatin1(key));
+        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const qint64 v = a[i + 1].toLongLong(&ok); if (ok) field = v; }
+    };
+    readI64("--time-limit", Game::searchConfig.timeLimitMs);
+    readI64("--probe-budget", Game::searchConfig.probeBudgetMs);
+    readI64("--probe-discovery", Game::searchConfig.probeDiscoveryMs);
+    readInt("--probe-points", Game::searchConfig.probePoints);
+    readInt("--probe-replies", Game::searchConfig.probeReplies);
+    readInt("--q-max-ply", Game::searchConfig.qMaxPly);
+    readInt("--q-max-nodes", Game::searchConfig.qMaxNodes);
+    readInt("--q-max-defenses", Game::searchConfig.qMaxDefenses);
+    readInt("--max-depth", Game::searchConfig.maxDepth);
+    readInt("--root-max-points", Game::searchConfig.rootMaxPoints);
+    readInt("--root-max-pairs", Game::searchConfig.rootMaxPairs);
+    readInt("--inner-points", Game::searchConfig.innerPoints);
+    readInt("--inner-pairs-deep", Game::searchConfig.innerPairsDeep);
+    readInt("--inner-pairs-shallow", Game::searchConfig.innerPairsShallow);
+    if (a.contains("--randomize")) Game::searchConfig.randomize = true;
+    readInt("--random-top-n", Game::searchConfig.randomTopN);
+    readInt("--seed", Game::searchConfig.randomSeed);
+    {
+        const int i = a.indexOf(QString::fromLatin1("--random-temp"));
+        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const double v = a[i + 1].toDouble(&ok); if (ok) Game::searchConfig.randomTemp = v; }
+    }
+    if (Game::searchConfig.randomSeed != 0)
+        Game::seedRandom(static_cast<unsigned>(Game::searchConfig.randomSeed));
+}
 struct Referee {
     std::array<std::array<int, 19>, 19> board{};
     int stones = 0;
@@ -209,8 +242,10 @@ QJsonObject runCritical(const QString &path, int prefix, int forcedColor, bool w
     return r;
 }
 QVector<QPoint> forcedOpening(int openingId) {
-    if (openingId == 0) return {QPoint(9, 8), QPoint(7, 10)}; // I10, K12
-     if (openingId == 1) return {QPoint(12, 11), QPoint(5, 7)}; // L7, H14
+    if (openingId == 0) return {QPoint(9, 8), QPoint(7, 10)};    // I10, K12
+    if (openingId == 1) return {QPoint(12, 11), QPoint(5, 7)};   // L7, H14
+    if (openingId == 2) return {QPoint(8, 7), QPoint(10, 11)};   // H11, L9
+    if (openingId == 3) return {QPoint(11, 6), QPoint(7, 12)};   // G8, M12
     return {};
 }
 bool validOpening(int openingId) {
@@ -317,6 +352,7 @@ int runWorker(const QStringList &arguments) {
 
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen"); QApplication app(argc, argv); QTimer dialogCloser; closeResultDialogs(dialogCloser); qInstallMessageHandler(captureDepth); const QStringList a = args();
+    applySearchConfig(a);
     if (option(a, "--mode", "") == "worker") return runWorker(a);
     if (option(a, "--mode", "") != "baseline") { QTextStream(stderr) << "only --mode baseline is supported\n"; return 2; }
     const int games = option(a, "--games", "2").toInt(), plies = option(a, "--plies", "30").toInt(), openingSet = option(a, "--opening-set", "0").toInt(); const QString out = option(a, "--out", "");

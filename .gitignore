@@ -94,3 +94,6 @@ CMakeLists.txt.user*
 .qtcreator
 
 build/
+
+# self-iteration generated reports (persisted on disk, not committed)
+self_iteration/reports/

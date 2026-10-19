@@ -16,6 +16,29 @@ class Game:public QObject
     Q_OBJECT
 public:
     Game();
+
+    struct SearchConfig {
+        qint64 timeLimitMs = 2000;
+        qint64 probeBudgetMs = 1100;
+        qint64 probeDiscoveryMs = 200;
+        int probePoints = 28;
+        int probeReplies = 32;
+        int qMaxPly = 2;
+        int qMaxNodes = 1024;
+        int qMaxDefenses = 16;
+        int maxDepth = 6;
+        int rootMaxPoints = 40;
+        int rootMaxPairs = 25;
+        int innerPoints = 18;
+        int innerPairsDeep = 35;
+        int innerPairsShallow = 20;
+        bool randomize = false;
+        int randomTopN = 5;
+        double randomTemp = 2000.0;
+        int randomSeed = 0;
+    };
+    static SearchConfig searchConfig;
+    static void seedRandom(unsigned seed);
     void ourFirstPlay();
     void ourplay();
     bool isEnd();

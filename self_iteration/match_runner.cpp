@@ -47,10 +47,12 @@ struct Fixture {
     int prefix = 0;
     QVector<QPair<int,int>> prefixMoves;
 };
+bool g_randomize = false;
+int g_seedBase = 1;
 QString option(const QStringList &a, const QString &key, const QString &fallback = {}) { int i=a.indexOf(key); return i>=0&&i+1<a.size()?a[i+1]:fallback; }
 QString notation(int x, int y) { return QString(QChar('A'+y))+QString::number(19-x); }
 QByteArray boardLine(const Referee &r, int color) { QByteArray out="BOARD "; out += color==1 ? "B" : "W"; for (int x=0;x<19;++x) for(int y=0;y<19;++y) { out += ' '; out += QByteArray::number(r.board[x][y]); } return out+'\n'; }
-QVector<QPair<int,int>> opening(int id) { if(id==0)return {{9,8},{7,10}}; if(id==1)return {{12,11},{5,7}}; return {}; }
+QVector<QPair<int,int>> opening(int id) { if(id==0)return {{9,8},{7,10}}; if(id==1)return {{12,11},{5,7}}; if(id==2)return {{8,7},{10,11}}; if(id==3)return {{11,6},{7,12}}; return {}; }
 QJsonArray moveJson(const QVector<QPair<int,int>> &m) { QJsonArray a; for(auto p:m)a.append(notation(p.first,p.second)); return a; }
 
 std::optional<Fixture> loadFixture(const QString &name, const QString &source, int prefix) {
@@ -97,7 +99,14 @@ bool readProtocol(QProcess &p, QString &line, int timeout) {
     line = QString::fromUtf8(p.readLine()).trimmed(); return !line.isEmpty();
 }
 QJsonObject play(const QString &blackPath, const QString &whitePath, int game, int maxTurns, int openingSet, const Fixture *fixture = nullptr) {
-    QProcess black, white; black.start(blackPath, {"--mode","worker","--color","B"}); white.start(whitePath, {"--mode","worker","--color","W"});
+    QStringList blackArgs = {"--mode", "worker", "--color", "B"};
+    QStringList whiteArgs = {"--mode", "worker", "--color", "W"};
+    if (g_randomize) {
+        const int seed = g_seedBase + game;
+        blackArgs << "--randomize" << "--seed" << QString::number(seed);
+        whiteArgs << "--randomize" << "--seed" << QString::number(seed);
+    }
+    QProcess black, white; black.start(blackPath, blackArgs); white.start(whitePath, whiteArgs);
     QJsonObject result{{"game",game+1},{"max_double_turns",maxTurns}}; QJsonArray transcript;
     if (fixture) { result["fixture"] = fixture->name; result["source"] = fixture->source; result["prefix_plies"] = fixture->prefix; result["current_color"] = fixture->currentColor; result["forced_color"] = fixture->currentColor; result["initial_stones"] = fixture->referee.stones; result["prefix_moves"] = moveJson(fixture->prefixMoves); }
     else result["opening_id"] = game % openingSet;
@@ -222,6 +231,8 @@ QJsonObject compareTranscript(const QJsonObject &control, const QJsonObject &can
 }
 }
 int main(int argc,char **argv){ QCoreApplication app(argc,argv); const auto a=app.arguments();
+      if (a.contains("--randomize")) g_randomize = true;
+      g_seedBase = option(a, "--seed-base", "1").toInt();
       const QString recordsDir = option(a, "--records-dir", "");
       if (!recordsDir.isEmpty()) {
           const QString worker = option(a, "--worker", "");
