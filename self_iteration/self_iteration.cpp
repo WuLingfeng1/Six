@@ -55,6 +55,7 @@ void applySearchConfig(const QStringList &a) {
         const int i = a.indexOf(QString::fromLatin1("--random-temp"));
         if (i >= 0 && i + 1 < a.size()) { bool ok = false; const double v = a[i + 1].toDouble(&ok); if (ok) Game::searchConfig.randomTemp = v; }
     }
+    if (a.contains("--tt-off")) Game::searchConfig.ttEnabled = false;
     if (Game::searchConfig.randomSeed != 0)
         Game::seedRandom(static_cast<unsigned>(Game::searchConfig.randomSeed));
 }

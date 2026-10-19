@@ -19,6 +19,8 @@ constexpr int WIN_THRESHOLD = 80000; // estimate 返回超过此值视为直接�
 
 Game::SearchConfig Game::searchConfig;
 
+constexpr int TT_SIZE = 1 << 18;
+
 static std::mt19937& searchRng()
 {
     static std::mt19937 rng(std::random_device{}());
@@ -27,6 +29,23 @@ static std::mt19937& searchRng()
 void Game::seedRandom(unsigned seed)
 {
     searchRng() = std::mt19937(seed);
+}
+
+struct ZobristTable {
+    quint64 table[19][19][3];
+    quint64 side;
+    ZobristTable() {
+        std::mt19937_64 rng(0x9E3779B97F4A7C15ULL);
+        for (int x = 0; x < 19; ++x)
+            for (int y = 0; y < 19; ++y)
+                for (int k = 0; k < 3; ++k)
+                    table[x][y][k] = rng();
+        side = rng();
+    }
+};
+const ZobristTable& zobrist() {
+    static ZobristTable z;
+    return z;
 }
 
 Game::Game()
@@ -38,6 +57,7 @@ Game::Game()
     , m_timedOut{false}
 {
     m_search.reserve(361);
+    m_tt.resize(TT_SIZE);
     //qDebug() << this->parent();
 }
 void Game::setType(int newType)
@@ -586,6 +606,18 @@ bool Game::contain(const std::vector<QPoint>& points, QPoint value) const
     return false;
 }
 
+quint64 Game::boardHash() const
+{
+    const ZobristTable& z = zobrist();
+    quint64 h = 0;
+    for (int x = 0; x < 19; ++x)
+        for (int y = 0; y < 19; ++y)
+            if (m_chess[x][y])
+                h ^= z.table[x][y][m_chess[x][y]];
+    if (m_type == 1) h ^= z.side;
+    return h;
+}
+
 int Game::evaluateBoard()
 {
     int score = 0;
@@ -893,9 +925,18 @@ bool Game::timedOut()
     return m_timedOut;
 }
 
-int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
+int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint64 hash)
 {
     if (timedOut()) return 0;
+
+    if (depth > 0 && searchConfig.ttEnabled) {
+        TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
+        if (te.key == hash && te.depth >= depth) {
+            if (te.flag == 1) return te.score;
+            if (te.flag == 2 && te.score >= beta) return te.score;
+            if (te.flag == 3 && te.score <= alpha) return te.score;
+        }
+    }
 
     int savedType = m_type;
     m_type = pieceType;
@@ -940,6 +981,8 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
         return timedOut() ? 0 : std::clamp(s, -WIN_SCORE + 1, WIN_SCORE - 1);
     }
 
+    const int originalAlpha = alpha;
+    const ZobristTable& z = zobrist();
     int best = -INF;
     for (const Move& mv : cands) {
         if (timedOut()) break;
@@ -957,8 +1000,10 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
         } else {
             if (depth > 1)
                 rebuildSearch();
+            const quint64 childHash = hash ^ z.table[a.x()][a.y()][pieceType]
+                                      ^ z.table[b.x()][b.y()][pieceType] ^ z.side;
             score = -negamax(std::max(0, depth - 1), -beta, -alpha, oppType,
-                             depth == 0 ? qply + 1 : 0);
+                             depth == 0 ? qply + 1 : 0, childHash);
         }
 
         m_chess[a.x()][a.y()] = 0;
@@ -975,7 +1020,19 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
 
     m_type = savedType;
     // Selective continuations are scores, not complete mate proofs.
-    return m_timedOut ? 0 : std::clamp(best, -WIN_SCORE + 1, WIN_SCORE - 1);
+    const int result = m_timedOut ? 0 : std::clamp(best, -WIN_SCORE + 1, WIN_SCORE - 1);
+    if (depth > 0 && searchConfig.ttEnabled && !m_timedOut && result > -WIN_SCORE + 1 && result < WIN_SCORE - 1) {
+        TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
+        if (te.key != hash || te.depth <= depth) {
+            te.key = hash;
+            te.depth = depth;
+            te.score = result;
+            if (result <= originalAlpha) te.flag = 3;
+            else if (result >= beta) te.flag = 2;
+            else te.flag = 1;
+        }
+    }
+    return result;
 }
 
 void Game::bestPlay(int stonesRemaining)
@@ -1356,6 +1413,9 @@ void Game::bestPlay(int stonesRemaining)
                     rootTactic == -1 ? -WIN_SCORE : -INF;
     Move bestMove = root[0];
 
+    m_type = myPiece;
+    const ZobristTable& z = zobrist();
+    const quint64 rootHash = boardHash();
     const int maxDepth = searchConfig.maxDepth;
     int completedDepth = 0;
     std::vector<Move> scoredRoot;
@@ -1386,7 +1446,10 @@ void Game::bestPlay(int stonesRemaining)
                 score = WIN_SCORE;
             } else {
                 rebuildSearch();
-                score = -negamax(depth - 1, -INF, -iterBestScore, oppPiece);
+                quint64 childHash = rootHash ^ z.table[a.x()][a.y()][myPiece];
+                if (stonesRemaining == 2) childHash ^= z.table[b.x()][b.y()][myPiece];
+                childHash ^= z.side;
+                score = -negamax(depth - 1, -INF, -iterBestScore, oppPiece, 0, childHash);
             }
 
             m_chess[a.x()][a.y()] = 0;

@@ -11,6 +11,13 @@
 #define TIE 0
 #define OTHER 3
 
+struct TTEntry {
+    quint64 key = 0;
+    int depth = -1;
+    int score = 0;
+    int flag = 0; // 1=EXACT, 2=LOWER, 3=UPPER
+};
+
 class Game:public QObject
 {
     Q_OBJECT
@@ -36,6 +43,7 @@ public:
         int randomTopN = 5;
         double randomTemp = 2000.0;
         int randomSeed = 0;
+        bool ttEnabled = true;
     };
     static SearchConfig searchConfig;
     static void seedRandom(unsigned seed);
@@ -55,6 +63,7 @@ public:
     bool CheckWinningPatterns();
     int estimate();
     int evaluateBoard();
+    quint64 boardHash() const;
     int evaluatePoint(int x, int y, int piece);
     int evaluatePair(QPoint a, QPoint b, int piece);
     bool hasSix(int x, int y, int piece);
@@ -67,7 +76,7 @@ public:
     int generateCandidates(int pieceType, std::vector<Move>& out,
                            int maxPoints, int maxPairs, int stonesRemaining = 2,
                            qint64 deadlineMs = -1);
-    int negamax(int depth, int alpha, int beta, int pieceType, int qply = 0);
+    int negamax(int depth, int alpha, int beta, int pieceType, int qply = 0, quint64 hash = 0);
     void bestPlay(int stonesRemaining = 2);
     bool timedOut();
     bool contain(const std::vector<QPoint>&, QPoint) const;
@@ -110,6 +119,7 @@ private:
     bool m_timedOut;
     int m_qNodes = 0; // Cumulative extension budget for one bestPlay, not per iteration.
     Move m_chosenMove;
+    std::vector<TTEntry> m_tt;
 };
 
 #endif // GAME_H

@@ -97,3 +97,4 @@ build/
 
 # self-iteration generated reports (persisted on disk, not committed)
 self_iteration/reports/
+self_iteration/iterate.log
