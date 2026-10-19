@@ -60,7 +60,7 @@ void Chequer::paintEvent(QPaintEvent *event){
     m_startY = m_grid;
 
     QPainter painter(this);  //设置Qpainter,关联当前窗口
-    painter.drawPixmap(rect(), QPixmap("./资源文件/bg.png")); //这个文件里有棋盘底色和黑白棋子
+    painter.drawPixmap(rect(), QPixmap(":/six/bg.png")); //棋盘底图由Qt资源系统提供
 
     drawGrid(&painter);//绘制网格
     draw9Point(&painter);//绘制九个点
@@ -361,6 +361,6 @@ void Chequer::onChessChange(QPoint location,int type)
 {
 
     chesswoman.push_back({location.y(),location.x(),type});
-    update();
+    repaint();
 }
 

@@ -1,0 +1,114 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 1,
+    "file": "C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "H14",
+            "N8"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 52326,
+            "elapsed_ms": 1,
+            "refutations": 2,
+            "status": "refuted",
+            "total": 52326,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "L12",
+                    "L9"
+                ],
+                "threats": [
+                    [
+                        "L14",
+                        "L13"
+                    ],
+                    [
+                        "L13",
+                        "L8"
+                    ],
+                    [
+                        "L8",
+                        "L7"
+                    ],
+                    [
+                        "N9",
+                        "O9"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "H14",
+            "N8"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 52326,
+            "elapsed_ms": 1,
+            "refutations": 2,
+            "status": "refuted",
+            "total": 52326,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "L12",
+                    "L9"
+                ],
+                "threats": [
+                    [
+                        "L14",
+                        "L13"
+                    ],
+                    [
+                        "L13",
+                        "L8"
+                    ],
+                    [
+                        "L8",
+                        "L7"
+                    ],
+                    [
+                        "N9",
+                        "O9"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "production_score": -100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "5d54bf915a6438b8f27aa5b3837221f904f179d3a371e62ed1f8d9c3f3b2b8ef",
+    "stones": 35,
+    "timed_out": false,
+    "turn": 19
+}

@@ -1,21 +1,38 @@
 #include"Game.h"
 #include"Chesswoman.h"
 #include"vector"
+#include <algorithm>
+#include <array>
+#include <QString>
 #include <QMessageBox>
 #include <QThread>
 using std::vector;
 
-Move m_movelist[100000];//保存所有走法进行归并排序（19x19 棋盘 C(361,2)=64980，不会越界）
-Move m_target[100000];//排序要用到的
+namespace {
+constexpr int INF = 1000000000;      // 搜索正/负无穷
+constexpr int WIN_SCORE = 100000000; // 已成六连（必胜）的评分
+constexpr int WIN_THRESHOLD = 80000; // estimate 返回超过此值视为直接杀棋
+constexpr qint64 DEFAULT_TIME_LIMIT_MS = 2000; // 单步搜索时限
+constexpr qint64 PROBE_BUDGET_MS = 1100;
+constexpr qint64 PROBE_DISCOVERY_MS = 200;
+constexpr int PROBE_POINTS = 28;
+constexpr int PROBE_REPLIES = 32;
+constexpr int Q_MAX_PLY = 2;
+constexpr int Q_MAX_NODES = 1024;
+constexpr int Q_MAX_DEFENSES = 16;
 
+}
 
 Game::Game()
-    :m_chess{{0}}
-    ,m_step{0}
-    ,m_win{TIE}
-    ,m_type{1}
+    : m_chess{{0}}
+    , m_step{0}
+    , m_win{TIE}
+    , m_type{1}
+    , m_timeLimitMs{DEFAULT_TIME_LIMIT_MS}
+    , m_timedOut{false}
 {
-
+    m_search.reserve(361);
+    //qDebug() << this->parent();
 }
 void Game::setType(int newType)
 {
@@ -40,6 +57,8 @@ int Game::step() const
 {
     return m_step;
 }
+
+
 void Game::whoFirst(int type)
 {
     if(type==1)
@@ -55,15 +74,8 @@ void Game::whoPlay(int type)
 
 void Game::gameundo(int x, int y)
 {
-    vector<QPoint>temp;
-    m_search.clear();
     m_chess[x][y]=0;
-    for (int i = 0; i < 19; i++)
-        for (int j = 0; j < 19; j++)
-        {
-            if (m_chess[i][j] != 0)
-                add({ i,j }, temp);
-        }
+    rebuildSearch();
 }
 
 void Game::whoWin()
@@ -108,71 +120,17 @@ void Game::ourFirstPlay()
     emit chessChange(location,m_type);
     emit undoenable();//发送撤回键可以用的信号
 
-    //测试用，增加算法时间，测试计时器使用
-    /*int c;
-    for (int i = 0; i < 1000; i++) {
-        for (int j = 0; j < 1000; j++) {
-            for (int m = 0; m < 1000; m++) {
-                c = c + (i + j * m * i);
-            }
-        }
-    }*/
     swap();
-    //emit stop();
 }
 
 void Game::ourplay()
 {
     emit restart(m_type);
-    //电脑走的时候鼠标点击失效
-    //emit clickoff();
-    //this->parent()->findChild<QWidget *>("centralwidget")->setAttribute(Qt::WA_TransparentForMouseEvents,false);
-    vector<QPoint>temp;
-    Comb(m_movelist, m_search.size());
-    qDebug() << "Score:"<<m_movelist[0].score();
-    //QThread::sleep(2);
-    set(m_movelist[0].step1());
-    add(m_movelist[0].step1(), temp);
-    emit chessChange(m_movelist[0].step1(),m_type);
-    if(m_step==2)
-    {
-        if (isEnd()) {
-            emit stop();
-            whoWin();
-        }
-
-        swap();
-        return;
-    }
-    set(m_movelist[0].step2());
-    add(m_movelist[0].step2(), temp);
-    emit chessChange(m_movelist[0].step2(),m_type);
-    //swap();
-
-    //测试用，增加算法时间，测试计时器使用
-    /*int c;
-    for (int i = 0; i < 1000; i++) {
-        for (int j = 0; j < 1000; j++) {
-            for (int m = 0; m < 1000; m++) {
-                c = c + (i + j * m * i);
-            }
-        }
-    }*/
-    swap();
-
-    //this->parent()->findChild<QWidget *>("centralwidget")->setAttribute(Qt::WA_TransparentForMouseEvents,true);
-    //如果结束了显示结果
-    if (isEnd()) {
-        emit stop();
-        whoWin();
-    //emit clickon();
-    }
+    bestPlay();
 }
 
 bool Game::isEnd()
 {
-    //-1->white  1->black
-    // int end1 = 0, end2 = 0, end3 = 0, end4 = 0;
     for (int i = 0; i < 14; i++)
         for (int j = 0; j < 14; j++) {
             int end1 = 0, end2 = 0, end3 = 0, end4 = 0;
@@ -195,12 +153,10 @@ bool Game::isEnd()
                     end4 += m_chess[i + k][j + 5 - k]; //斜着
             }
             if (end1 / 6 < 0 || end2 / 6 < 0 || end3 / 6 < 0 || end4 / 6 < 0) {
-                qDebug() << end1 << " " << end2 << " " << end3 << " " << end4;
                 m_win = WIN_WHITE;
                 return true;
             }
             if (end1 / 6 > 0 || end2 / 6 > 0 || end3 / 6 > 0 || end4 / 6 > 0) {
-                qDebug() << end1 << " " << end2 << " " << end3 << " " << end4;
                 m_win = WIN_BLACK;
                 return true;
             }
@@ -216,12 +172,10 @@ bool Game::isEnd()
                     end2 += m_chess[i + k][j]; //竖着
             }
             if (end2 / 6 < 0) {
-                qDebug() << end2;
                 m_win = WIN_WHITE;
                 return true;
             }
             if (end2 / 6 > 0) {
-                qDebug() << end2;
                 m_win = WIN_BLACK;
                 return true;
             }
@@ -236,12 +190,10 @@ bool Game::isEnd()
                     end1 += m_chess[i][j + k]; //横着
             }
             if (end1 / 6 < 0) {
-                qDebug() << end1;
                 m_win = WIN_WHITE;
                 return true;
             }
             if (end1 / 6 > 0) {
-                qDebug() << end1;
                 m_win = WIN_BLACK;
                 return true;
             }
@@ -260,13 +212,11 @@ bool Game::isEnd()
 }
 
 void Game::swap()
-{   //emit stop();
-    //emit restart(m_type);
+{
     m_type==1?m_type=2:m_type=1;
     m_step==0?m_step=2:m_step=0;
     emit stop();
     emit restart(m_type);
-    //emit stop();
 }
 
 void Game::set(QPoint location)
@@ -340,11 +290,8 @@ void Game::retract(QPoint location,vector<QPoint>&lastAdd)
     m_search.push_back(location);
     if (!lastAdd.empty())
     {
-        for (vector<QPoint>::iterator it = lastAdd.begin(); it != lastAdd.end(); ++it)
-        {
-            m_search.erase(std::remove(m_search.begin(), m_search.end(), *it), m_search.end());
-            break;
-        }
+        for (const QPoint& p : lastAdd)
+            m_search.erase(std::remove(m_search.begin(), m_search.end(), p), m_search.end());
     }
     lastAdd.clear();
     if (m_step == 0)
@@ -367,61 +314,6 @@ void Game::unmake(QPoint a, QPoint b)
 {
     m_chess[a.x()][a.y()] = 0;
     m_chess[b.x()][b.y()] = 0;
-}
-
-void Game::mergeSort(Move list[], int n)
-{
-    int s = 1;
-    while (s < n)
-    {
-        mergePass(list, m_target, s, n);
-        s += s;
-        mergePass(m_target, list, s, n);
-        s += s;
-    }
-}
-
-void Game::mergePass(Move list[], Move t[], int s, int n)
-{
-    int i = 0;
-
-    while (i <= n - 2 * s)
-    {
-        //合并大小为s的相邻二段子数组
-        merge(list, t, i, i + s - 1, i + 2 * s - 1);
-
-        i = i + 2 * s;
-    }
-
-    if (i + s < n) //剩余的元素个数小於2s
-    {
-
-        merge(list, t, i, i + s - 1, n - 1);
-
-    }
-    else
-        for (int j = i; j <= n - 1; j++)
-            t[j] = list[j];
-}
-
-void Game::merge(Move list[], Move t[], int l, int m, int r)
-{
-    int i = l;
-    int j = m + 1;
-    int k = l;
-
-    while ((i <= m) && (j <= r))
-        if (list[i].score() >= list[j].score())
-            t[k++] = list[i++];
-        else
-            t[k++] = list[j++];
-
-    if (i > m)
-        for (int q = j; q <= r; q++)
-            t[k++] = list[q];
-    else
-        for (int q = i; q <= m; q++)
-            t[k++] = list[q];
 }
 
 void Game::analyzeDir(int px, int py, int dx, int dy,
@@ -477,7 +369,6 @@ void Game::analyzeDir(int px, int py, int dx, int dy,
         }
     }
 }
-
 void Game::AnalyFourConnect()
 {
     int x1 = m_last.x(), y1 = m_last.y();
@@ -493,7 +384,6 @@ void Game::AnalyFourConnect()
                     && m_chess[x1][i + 4] == m_chess[x1][i + 5]
                     && (m_chess[x1][i + 5] == 1 || m_chess[x1][i + 5] == 2)) {
                     m_fourConnect[0][1] += 1;
-                    qDebug() << "cunzaihuosiHH1";
                 }
             }
             for (int i = y2 - 5 > 0 ? y2 - 5 : 0; i <= y2 && i + 7 < 19; i++) {
@@ -503,7 +393,6 @@ void Game::AnalyFourConnect()
                     && m_chess[x2][i + 4] == m_chess[x2][i + 5]
                     && (m_chess[x2][i + 5] == 1 || m_chess[x2][i + 5] == 2)) {
                     m_fourConnect[0][1] += 1;
-                    qDebug() << "cunzaihuosiHH2";
                 }
             }
         }
@@ -516,7 +405,6 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][y1] == m_chess[i + 5][y1]
                     && (m_chess[i + 5][y1] == 1 || m_chess[i + 5][y1] == 2)) {
                     m_fourConnect[1][1] += 1;
-                    qDebug() << "cunzaihuosiVV1";
                 }
             }
             for (int i = x2 - 5 > 0 ? x2 - 5 : 0; i <= x2 && i + 7 < 19; i++) {
@@ -526,7 +414,6 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][y2] == m_chess[i + 5][y2]
                     && (m_chess[i + 5][y2] == 1 || m_chess[i + 5][y2] == 2)) {
                     m_fourConnect[1][1] += 1;
-                    qDebug() << "cunzaihuosiVV2";
                 }
             }
         }
@@ -548,7 +435,6 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][j + 4] == m_chess[i + 5][j + 5]
                     && (m_chess[i + 5][j + 5] == 1 || m_chess[i + 5][j + 5] == 2)) {
                     m_fourConnect[2][1] += 1;
-                    qDebug() << "cunzaihuosiRR1";
                 }
             }
             if (x2 - 5 < 0 || y2 - 5 < 0)
@@ -569,7 +455,6 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][j + 4] == m_chess[i + 5][j + 5]
                     && (m_chess[i + 5][j + 5] == 1 || m_chess[i + 5][j + 5] == 2)) {
                     m_fourConnect[2][1] += 1;
-                    qDebug() << "cunzaihuosiRR2";
                 }
             }
         }
@@ -594,7 +479,6 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][j - 4] == m_chess[i + 5][j - 5]
                     && (m_chess[i + 5][j - 5] == 1 || m_chess[i + 5][j - 5] == 2)) {
                     m_fourConnect[3][1] += 1;
-                    qDebug() << "cunzaihuosiLL1";
                 }
             }
             if (x2 - 5 < 0 || y2 + 5 > 18)
@@ -615,14 +499,10 @@ void Game::AnalyFourConnect()
                     && m_chess[i + 4][j - 4] == m_chess[i + 5][j - 5]
                     && (m_chess[i + 5][j - 5] == 1 || m_chess[i + 5][j - 5] == 2)) {
                     m_fourConnect[3][1] += 1;
-                    qDebug() << "cunzaihuosiLL2";
                 }
             }
         }
     }
-    //else {
-    //    qDebug() << "无连四棋型";
-    //}
 }
 
 bool Game::CheckWinningPatterns()
@@ -640,7 +520,6 @@ bool Game::CheckWinningPatterns()
     }
     return false;
 }
-
 void Game::resetFourConnect()
 {
     for (int d = 0; d < 4; d++)
@@ -662,6 +541,7 @@ int Game::estimate()
         numberOfMyRoad[i] = 0;
         numberOfEnemyRoad[i] = 0;
     }
+    resetFourConnect();
     for (int d = 0; d < 4; d++) {
         analyzeDir(x1, y1, DIR[d][0], DIR[d][1], -1, -1, d);
         analyzeDir(x2, y2, DIR[d][0], DIR[d][1], x1, y1, d);
@@ -688,81 +568,10 @@ int Game::estimate()
     resetFourConnect();
     return after - pre;
 }
-bool hasDone(vector<bool>index, int n, int k)
-{
-    for (int i = n - 1; i >= n - k; i--)
-    {
-        if (!index[i])
-        {
-            return false;
-        }
-    }
-    return true;
-}
-void Game::Comb(Move list[], int n)
-{
-    QPoint temp[2];
-    int score;
-    m_count = 0;
-    vector <bool>index(n, false);
-    //选中前k个位置
-    for (int i = 0, j = 0; i < 2; i++)
-    {
-        index[i] = true;
-        temp[j++] = m_search[i];
-    }
-    make(temp[0], temp[1]);
-    score = estimate();
-    list[m_count++] = Move(temp[0],temp[1],score);
-    unmake(temp[0], temp[1]);
-    while (!hasDone(index, n, 2))
-    {
-        //从左到右扫描数组
-        for (int i = 0; i < n - 1; i++)
-        {
-            //找到第一个“10”组合将其变成"01"组合
-            if (index[i] && !index[i + 1])
-            {
-                index[i] = false;
-                index[i + 1] = true;
-
-                //将"01"组合左边的1移到最左边
-                int count = 0;
-                for (int j = 0; j < i; j++)
-                {
-                    if (index[j])
-                    {
-                        index[j] = false;
-                        index[count++] = true;
-                    }
-                }
-                for (int i = 0, j = 0; i < n; i++)
-                {
-                    if (index[i])
-                        temp[j++] = m_search[i];
-                }
-                make(temp[0], temp[1]);
-                score = estimate();
-                if (score >= 80000)
-                {
-                    m_movelist[0] = { temp[0],temp[1],score };
-                    unmake(temp[0], temp[1]);
-                    return;
-                }
-                else
-                {
-                    list[m_count++] = { temp[0],temp[1],score };
-                    unmake(temp[0], temp[1]);
-                }
-                break;
-            }
-        }
-    }
-    mergeSort(list, m_count);
-}
 
 bool Game::contain(const std::vector<QPoint>& points, QPoint value) const
 {
+
     for (auto it = points.begin(); it != points.end(); ++it)
     {
         if ((*it) == value)
@@ -771,3 +580,867 @@ bool Game::contain(const std::vector<QPoint>& points, QPoint value) const
     return false;
 }
 
+int Game::evaluateBoard()
+{
+    int score = 0;
+    int numberOfMyRoad[7]{}, numberOfEnemyRoad[7]{};
+    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    for (int x = 0; x < 19; x++) {
+        for (int y = 0; y < 19; y++) {
+            for (int d = 0; d < 4; d++) {
+                int dx = DIR[d][0], dy = DIR[d][1];
+                if (x + 5 * dx < 0 || x + 5 * dx >= 19) continue;
+                if (y + 5 * dy < 0 || y + 5 * dy >= 19) continue;
+                int number = 0;
+                for (int t = 0; t < 6; t++) {
+                    int v = m_chess[x + t * dx][y + t * dy];
+                    if (v == 2) number += 7; else number += v;
+                }
+                if (number == 0 || (number > 6 && number % 7 != 0)) continue;
+                if (number < 7) {
+                    if (m_type == 1) numberOfMyRoad[number]++;
+                    else numberOfEnemyRoad[number]++;
+                } else {
+                    if (m_type == 1) numberOfEnemyRoad[number / 7]++;
+                    else numberOfMyRoad[number / 7]++;
+                }
+            }
+        }
+    }
+    for (int i = 1; i <= 6; i++)
+        score += (numberOfMyRoad[i] - numberOfEnemyRoad[i]) * scoreOfMyRoad[i];
+    return score;
+}
+
+int Game::evaluatePoint(int x, int y, int piece)
+{
+    return evaluatePair(QPoint(x, y), QPoint(x, y), piece);
+}
+
+int Game::evaluatePair(QPoint a, QPoint b, int piece)
+{
+    const int ax = a.x(), ay = a.y(), bx = b.x(), by = b.y();
+    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    auto deltaAt = [&](int px, int py, bool skipShared) {
+        int delta = 0;
+        for (const auto& dir : DIR) {
+            const int dx = dir[0], dy = dir[1];
+            int sx = px, sy = py;
+            for (int k = 0; k < 6; ++k, sx -= dx, sy -= dy) {
+                int ex = sx + 5 * dx, ey = sy + 5 * dy;
+                if (sx < 0 || sx >= 19 || sy < 0 || sy >= 19 ||
+                    ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
+                int own = 0, enemy = 0, added = 0;
+                bool shared = false;
+                int cx = sx, cy = sy;
+                for (int t = 0; t < 6; ++t, cx += dx, cy += dy) {
+                    const bool atA = cx == ax && cy == ay;
+                    if (atA) shared = true;
+                    int v = m_chess[cx][cy];
+                    if (v == piece) ++own;
+                    else if (v != 0) ++enemy;
+                    else if (atA || (cx == bx && cy == by)) ++added;
+                }
+                // Count windows touching both stones only once, with both added.
+                if (skipShared && shared) continue;
+                const int before = own && enemy ? 0 : scoreOfMyRoad[own] - scoreOfMyRoad[enemy];
+                const int after = (own + added) && enemy ? 0 : scoreOfMyRoad[own + added] - scoreOfMyRoad[enemy];
+                delta += after - before;
+            }
+        }
+        return delta;
+    };
+    return deltaAt(ax, ay, false) + (ax == bx && ay == by ? 0 : deltaAt(bx, by, true));
+}
+
+bool Game::hasSix(int x, int y, int piece)
+{
+    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    for (int d = 0; d < 4; d++) {
+        int dx = DIR[d][0], dy = DIR[d][1];
+        int cnt = 1;
+        for (int s = 1; s < 6; s++) {
+            int nx = x + dx * s, ny = y + dy * s;
+            if (nx < 0 || nx > 18 || ny < 0 || ny > 18 || m_chess[nx][ny] != piece) break;
+            cnt++;
+        }
+        for (int s = 1; s < 6; s++) {
+            int nx = x - dx * s, ny = y - dy * s;
+            if (nx < 0 || nx > 18 || ny < 0 || ny > 18 || m_chess[nx][ny] != piece) break;
+            cnt++;
+        }
+        if (cnt >= 6) return true;
+    }
+    return false;
+}
+
+void Game::rebuildSearch()
+{
+    m_search.reserve(361);
+    m_search.clear();
+    for (int x = 0; x < 19; x++)
+        for (int y = 0; y < 19; y++) {
+            if (m_chess[x][y] != 0) continue;
+            bool near = false;
+            for (int dx = -2; dx <= 2 && !near; dx++)
+                for (int dy = -2; dy <= 2 && !near; dy++)
+                    if (x + dx >= 0 && x + dx < 19 && y + dy >= 0 && y + dy < 19
+                        && m_chess[x + dx][y + dy] != 0)
+                        near = true;
+            if (near) m_search.push_back({x, y});
+        }
+}
+
+int Game::tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaining,
+                        bool enumerate, qint64 deadlineMs)
+{
+    out.clear();
+    out.reserve(361);
+    const auto interrupted = [&]() {
+        return timedOut() || (deadlineMs >= 0 && m_timer.elapsed() >= deadlineMs);
+    };
+    if (interrupted()) return -2;
+    int empty[361], emptyCount = 0;
+    for (int x = 0; x < 19; ++x)
+        for (int y = 0; y < 19; ++y)
+            if (m_chess[x][y] == 0) empty[emptyCount++] = x * 19 + y;
+    if (interrupted()) return -2;
+    if (emptyCount < stonesRemaining) return 0;
+
+    // At most 924 six-cell windows. A singleton uses the same index twice.
+    int threats[924][2], threatCount = 0;
+    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    for (int x = 0; x < 19; ++x) {
+        if (interrupted()) { out.clear(); return -2; }
+        for (int y = 0; y < 19; ++y)
+            for (const auto& dir : DIR) {
+                int ex = x + 5 * dir[0], ey = y + 5 * dir[1];
+                if (ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
+                int own = 0, enemy = 0;
+                int holes[2];
+                int holeCount = 0;
+                int cx = x, cy = y;
+                for (int t = 0; t < 6; ++t) {
+                    int v = m_chess[cx][cy];
+                    if (v == 0) {
+                        if (holeCount == 2) { ++holeCount; break; }
+                        holes[holeCount++] = cx * 19 + cy;
+                    }
+                    else if (v == pieceType) ++own;
+                    else ++enemy;
+                    if (own && enemy) break;
+                    cx += dir[0]; cy += dir[1];
+                }
+                if ((own && enemy) || holeCount == 0 || holeCount > 2) continue;
+                if (enemy == 0 && own >= 4 && holeCount <= stonesRemaining) {
+                    int a = holes[0], b = holes[holeCount - 1];
+                    if (a == b && stonesRemaining == 2)
+                        for (int i = 0; i < emptyCount; ++i)
+                            if (empty[i] != a) { b = empty[i]; break; }
+                    out.emplace_back(QPoint(a / 19, a % 19), QPoint(b / 19, b % 19), WIN_SCORE);
+                    if (interrupted()) { out.clear(); return -2; }
+                    return 1; // Winning now takes precedence over every defense.
+                }
+                if (own == 0 && enemy >= 4) {
+                    threats[threatCount][0] = holes[0];
+                    threats[threatCount++][1] = holes[holeCount - 1];
+                }
+            }
+    }
+    if (interrupted()) { out.clear(); return -2; }
+    if (threatCount == 0) return 0;
+
+    std::vector<unsigned char> seen(enumerate ? 361 * 361 : 0, 0);
+    auto append = [&](int a, int b) {
+        if (a == b) return;
+        int i = a, j = b;
+        if (i > j) std::swap(i, j);
+        if (!seen[i * 361 + j]) {
+            seen[i * 361 + j] = true;
+            out.emplace_back(QPoint(a / 19, a % 19), QPoint(b / 19, b % 19), 0);
+        }
+    };
+    // Every cover hits the first set. If a alone fails, b must hit the
+    // first uncovered set; this enumerates all covers without quadratic search.
+    for (int first = 0; first < 2; ++first) {
+        if (first == 1 && threats[0][0] == threats[0][1]) continue;
+        int a = threats[0][first];
+        if (interrupted()) { out.clear(); return -2; }
+        int uncovered = -1;
+        for (int i = 0; i < threatCount; ++i)
+            if (threats[i][0] != a && threats[i][1] != a) { uncovered = i; break; }
+        if (uncovered == -1) {
+            if (interrupted()) { out.clear(); return -2; }
+            if (!enumerate) return 2;
+            if (stonesRemaining == 1) out.emplace_back(QPoint(a / 19, a % 19), QPoint(a / 19, a % 19), 0);
+            else for (int i = 0; i < emptyCount; ++i) append(a, empty[i]);
+            continue;
+        }
+        if (stonesRemaining == 1) continue;
+        for (int second = 0; second < 2; ++second) {
+            if (second == 1 && threats[uncovered][0] == threats[uncovered][1]) continue;
+            int b = threats[uncovered][second];
+            bool coversAll = true;
+            for (int i = 0; i < threatCount; ++i)
+                if (threats[i][0] != a && threats[i][1] != a
+                    && threats[i][0] != b && threats[i][1] != b) {
+                    coversAll = false;
+                    break;
+                }
+            if (coversAll) {
+                if (interrupted()) { out.clear(); return -2; }
+                if (!enumerate) return 2;
+                append(a, b);
+            }
+        }
+    }
+    if (interrupted()) { out.clear(); return -2; }
+    return out.empty() ? -1 : 2;
+}
+
+int Game::generateCandidates(int pieceType, std::vector<Move>& out,
+                             int maxPoints, int maxPairs, int stonesRemaining, qint64 deadlineMs)
+{
+    const auto interrupted = [&]() {
+        return timedOut() || (deadlineMs >= 0 && m_timer.elapsed() >= deadlineMs);
+    };
+    int tactic = tacticalMoves(pieceType, out, stonesRemaining, true, deadlineMs);
+    if (tactic == -2 || interrupted()) { out.clear(); return -2; }
+    if (tactic == 1) return tactic;
+    if (tactic == 2) {
+        for (Move& mv : out) {
+            if (interrupted()) { out.clear(); return -2; }
+            mv.setScore(evaluatePair(mv.step1(), mv.step2(), pieceType));
+        }
+        if (interrupted()) { out.clear(); return -2; }
+        std::sort(out.begin(), out.end(),
+                  [](const Move& a, const Move& b) { return a.score() > b.score(); });
+        if (interrupted()) { out.clear(); return -2; }
+        return tactic; // Never top-K/top-N prune required defenses or their fillers.
+    }
+
+    std::vector<QPoint> legal;
+    legal.reserve(361);
+    for (int x = 0; x < 19; ++x)
+        for (int y = 0; y < 19; ++y)
+            if (m_chess[x][y] == 0) legal.emplace_back(x, y);
+    if (interrupted()) { out.clear(); return -2; }
+    if (static_cast<int>(legal.size()) < stonesRemaining) return tactic;
+    if (tactic == -1) {
+        // The result is already proven lost; still supply a legal turn.
+        out.emplace_back(legal[0], legal[stonesRemaining - 1], -WIN_SCORE);
+        if (interrupted()) { out.clear(); return -2; }
+        return tactic;
+    }
+
+    // 1. 单点差分评估并排序
+    std::vector<std::pair<QPoint, int>> pts;
+    const auto& search = m_search.empty() ? legal : m_search;
+    pts.reserve(search.size());
+    for (const QPoint& p : search) {
+        if (interrupted()) { out.clear(); return -2; }
+        if (m_chess[p.x()][p.y()] != 0) continue;
+        int s = evaluatePoint(p.x(), p.y(), pieceType);
+        pts.emplace_back(p, s);
+    }
+    if (interrupted()) { out.clear(); return -2; }
+    std::sort(pts.begin(), pts.end(),
+              [](const std::pair<QPoint, int>& a, const std::pair<QPoint, int>& b) {
+                  return a.second > b.second;
+              });
+    if (interrupted()) { out.clear(); return -2; }
+    int K = std::min((int)pts.size(), maxPoints);
+
+    // Rank the complete turn delta, including synergy in shared windows.
+    std::vector<Move> pairs;
+    pairs.reserve(maxPoints * (maxPoints - 1) / 2);
+    for (int i = 0; i < K; i++) {
+        if (interrupted()) { out.clear(); return -2; }
+        if (stonesRemaining == 1) {
+            pairs.emplace_back(pts[i].first, pts[i].first, pts[i].second);
+            continue;
+        }
+        for (int j = i + 1; j < K; j++) {
+            if (interrupted()) { out.clear(); return -2; }
+            QPoint a = pts[i].first, b = pts[j].first;
+            if (m_chess[a.x()][a.y()] != 0 || m_chess[b.x()][b.y()] != 0) continue;
+            int sc = evaluatePair(a, b, pieceType);
+            pairs.emplace_back(a, b, sc);
+        }
+    }
+    if (interrupted()) { out.clear(); return -2; }
+    std::sort(pairs.begin(), pairs.end(),
+              [](const Move& a, const Move& b) { return a.score() > b.score(); });
+    if (interrupted()) { out.clear(); return -2; }
+
+    int N = std::min((int)pairs.size(), maxPairs);
+    out.assign(pairs.begin(), pairs.begin() + N);
+    if (out.empty()) out.emplace_back(legal[0], legal[stonesRemaining - 1], 0);
+    if (interrupted()) { out.clear(); return -2; }
+    return tactic;
+}
+
+bool Game::timedOut()
+{
+    if (!m_timedOut && m_timer.isValid() && m_timer.elapsed() >= m_timeLimitMs)
+        m_timedOut = true;
+    return m_timedOut;
+}
+
+int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply)
+{
+    if (timedOut()) return 0;
+
+    int savedType = m_type;
+    m_type = pieceType;
+
+    std::vector<Move> cands;
+    const bool extend = qply < Q_MAX_PLY && m_qNodes < Q_MAX_NODES;
+    int tactic = depth == 0 ? tacticalMoves(pieceType, cands, 2, extend) :
+                 generateCandidates(pieceType, cands, 18, (depth >= 2 ? 35 : 20));
+    if (tactic == -2 || timedOut()) {
+        m_type = savedType;
+        return 0;
+    }
+    if (tactic == 1 || tactic == -1) {
+        m_type = savedType;
+        return tactic == 1 ? WIN_SCORE : -WIN_SCORE;
+    }
+
+    if (depth == 0 && (tactic != 2 || !extend)) {
+        int s = evaluateBoard();
+        m_type = savedType;
+        return timedOut() ? 0 : std::clamp(s, -WIN_SCORE + 1, WIN_SCORE - 1);
+    }
+    if (depth == 0) {
+        ++m_qNodes;
+        for (Move& mv : cands) {
+            if (timedOut()) { m_type = savedType; return 0; }
+            mv.setScore(evaluatePair(mv.step1(), mv.step2(), pieceType));
+        }
+        if (timedOut()) { m_type = savedType; return 0; }
+        std::sort(cands.begin(), cands.end(),
+                  [](const Move& a, const Move& b) { return a.score() > b.score(); });
+        if (timedOut()) { m_type = savedType; return 0; }
+        if (cands.size() > Q_MAX_DEFENSES) cands.resize(Q_MAX_DEFENSES);
+    }
+
+    std::vector<QPoint> savedSearch = m_search;
+    int oppType = (pieceType == 1) ? 2 : 1;
+
+    if (cands.empty()) {
+        int s = evaluateBoard();
+        m_type = savedType;
+        return timedOut() ? 0 : std::clamp(s, -WIN_SCORE + 1, WIN_SCORE - 1);
+    }
+
+    int best = -INF;
+    for (const Move& mv : cands) {
+        if (timedOut()) break;
+        QPoint a = mv.step1(), b = mv.step2();
+        if (m_chess[a.x()][a.y()] != 0 || m_chess[b.x()][b.y()] != 0) continue;
+
+        QPoint savedLast = m_last, savedLLast = m_llast;
+        m_chess[a.x()][a.y()] = pieceType;
+        m_chess[b.x()][b.y()] = pieceType;
+        m_last = a; m_llast = b;
+
+        int score;
+        if (hasSix(a.x(), a.y(), pieceType) || hasSix(b.x(), b.y(), pieceType)) {
+            score = WIN_SCORE;
+        } else {
+            if (depth > 1)
+                rebuildSearch();
+            score = -negamax(std::max(0, depth - 1), -beta, -alpha, oppType,
+                             depth == 0 ? qply + 1 : 0);
+        }
+
+        m_chess[a.x()][a.y()] = 0;
+        m_chess[b.x()][b.y()] = 0;
+        m_last = savedLast; m_llast = savedLLast;
+        if (depth > 1)
+            m_search = savedSearch;
+
+        if (timedOut()) break;
+        if (score > best) best = score;
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) break;
+    }
+
+    m_type = savedType;
+    // Selective continuations are scores, not complete mate proofs.
+    return m_timedOut ? 0 : std::clamp(best, -WIN_SCORE + 1, WIN_SCORE - 1);
+}
+
+void Game::bestPlay(int stonesRemaining)
+{
+    // Odd steps mean the first stone is already on the board; search only one.
+    stonesRemaining = m_step % 2 != 0 ? 1 : std::clamp(stonesRemaining, 1, 2);
+    int myPiece = m_type;
+    int oppPiece = (myPiece == 1) ? 2 : 1;
+
+    m_timer.start();
+    m_timeLimitMs = DEFAULT_TIME_LIMIT_MS;
+    m_timedOut = false;
+    m_qNodes = 0;
+
+    int savedType = m_type;
+    m_type = myPiece;
+    QPoint savedLastG = m_last, savedLLastG = m_llast;
+
+    const std::vector<QPoint> originalSearch = m_search;
+    rebuildSearch();
+    std::vector<Move> root;
+    int rootTactic = generateCandidates(myPiece, root, 40, 25, stonesRemaining);
+
+    m_last = savedLastG; m_llast = savedLLastG;
+    m_type = savedType;
+
+    if (root.empty() && m_timedOut) {
+        std::vector<QPoint> legal;
+        for (int x = 0; x < 19; ++x)
+            for (int y = 0; y < 19; ++y)
+                if (m_chess[x][y] == 0) legal.emplace_back(x, y);
+        if (static_cast<int>(legal.size()) >= stonesRemaining)
+            root.emplace_back(legal[0], legal[stonesRemaining - 1], 0);
+    }
+    if (root.empty()) {
+        m_search = originalSearch;
+        // No legal turn remains; do not fabricate an occupied point.
+        m_chosenMove = Move(QPoint(-1, -1), QPoint(-1, -1), 0);
+        emit stop();
+        return;
+    }
+
+    std::vector<QPoint> savedSearch = m_search;
+
+    // A finite reply list can refute a move, but cannot certify it safe.
+    // Keep witnesses independent of scores, alpha bounds and iterative deepening.
+    std::vector<Move> witnesses;
+    std::vector<bool> refuted(root.size(), false);
+    std::vector<bool> probeCompleted(root.size(), false);
+    const int rootCount = static_cast<int>(root.size());
+    int probeCount = 0, replyCount = 0, excluded = 0, unknown = 0, secondaryCount = 0;
+    const auto notation = [](QPoint p) {
+        return QString(QChar('A' + p.y())) + QString::number(19 - p.x());
+    };
+    bool exactDefenseHandled = false;
+    std::vector<Move> exactSafeMoves;
+    if (rootTactic == 2) {
+        exactDefenseHandled = true;
+        const qint64 exactDeadline = std::min(PROBE_BUDGET_MS, m_timeLimitMs);
+        const std::vector<QPoint> exactSearch = m_search;
+        const QPoint exactLast = m_last, exactLLast = m_llast;
+        const int exactType = m_type;
+        std::vector<Move> safe, unknownMoves;
+        int exactSafe = 0, exactUnknown = 0, exactRefuted = 0;
+        int exactReplies = 0;
+        std::sort(root.begin(), root.end(), [&](const Move& lhs, const Move& rhs) {
+            return evaluatePair(lhs.step1(), lhs.step2(), myPiece)
+                   > evaluatePair(rhs.step1(), rhs.step2(), myPiece);
+        });
+        for (const Move& candidate : root) {
+            if (timedOut() || m_timer.elapsed() >= exactDeadline) {
+                unknownMoves.push_back(candidate);
+                ++exactUnknown;
+                continue;
+            }
+            const QPoint a = candidate.step1(), b = candidate.step2();
+            bool refutedCandidate = false;
+            bool complete = true;
+            m_type = myPiece;
+            m_chess[a.x()][a.y()] = myPiece;
+            m_chess[b.x()][b.y()] = myPiece;
+            m_last = a; m_llast = b;
+
+            if (!hasSix(a.x(), a.y(), myPiece) && !hasSix(b.x(), b.y(), myPiece)) {
+                struct Window { std::vector<int> holes; };
+                const auto windows = [&](int piece, int maxHoles) {
+                    std::vector<Window> result;
+                    const int directions[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
+                    for (int x = 0; x < 19; ++x)
+                        for (int y = 0; y < 19; ++y)
+                            for (const auto& direction : directions) {
+                                const int ex = x + 5 * direction[0], ey = y + 5 * direction[1];
+                                if (ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
+                                std::vector<int> holes;
+                                bool blocked = false;
+                                for (int k = 0; k < 6; ++k) {
+                                    const int cell = m_chess[x + k * direction[0]][y + k * direction[1]];
+                                    if (!cell) holes.push_back((x + k * direction[0]) * 19 + y + k * direction[1]);
+                                    else if (cell != piece) { blocked = true; break; }
+                                }
+                                if (!blocked && static_cast<int>(holes.size()) <= maxHoles)
+                                    result.push_back({std::move(holes)});
+                            }
+                    return result;
+                };
+                const auto attack = windows(oppPiece, 4);
+                const auto counter = windows(myPiece, 2);
+                std::array<std::vector<int>, 361> incidence;
+                std::vector<int> base;
+                for (size_t k = 0; k < attack.size(); ++k) {
+                    if (attack[k].holes.size() <= 2) base.push_back(static_cast<int>(k));
+                    for (int hole : attack[k].holes) incidence[hole].push_back(static_cast<int>(k));
+                }
+                std::vector<QPoint> legalReplies;
+                for (int x = 0; x < 19; ++x)
+                    for (int y = 0; y < 19; ++y)
+                        if (!m_chess[x][y]) legalReplies.emplace_back(x, y);
+                for (size_t i = 0; i < legalReplies.size() && !refutedCandidate; ++i) {
+                    for (size_t j = i + 1; j < legalReplies.size(); ++j) {
+                        if (timedOut() || m_timer.elapsed() >= exactDeadline) {
+                            complete = false;
+                            break;
+                        }
+                        const QPoint c = legalReplies[i], d = legalReplies[j];
+                        ++exactReplies;
+                        m_chess[c.x()][c.y()] = oppPiece;
+                        m_chess[d.x()][d.y()] = oppPiece;
+                        bool fatal = hasSix(c.x(), c.y(), oppPiece) || hasSix(d.x(), d.y(), oppPiece);
+                        if (!fatal) {
+                            std::vector<int> affected = base;
+                            std::vector<unsigned char> seen(attack.size(), 0);
+                            for (int index : affected) seen[index] = 1;
+                            for (int point : {c.x() * 19 + c.y(), d.x() * 19 + d.y()})
+                                for (int index : incidence[point])
+                                    if (!seen[index]) { seen[index] = 1; affected.push_back(index); }
+                            std::vector<std::vector<int>> threats;
+                            for (int index : affected) {
+                                std::vector<int> holes;
+                                for (int point : attack[index].holes)
+                                    if (point != c.x() * 19 + c.y() && point != d.x() * 19 + d.y())
+                                        holes.push_back(point);
+                                if (holes.empty()) { fatal = true; break; }
+                                if (holes.size() <= 2) threats.push_back(std::move(holes));
+                            }
+                            bool counterWin = false;
+                            if (!fatal)
+                                for (const Window& window : counter) {
+                                    bool untouched = true;
+                                    for (int point : window.holes)
+                                        if (point == c.x() * 19 + c.y() || point == d.x() * 19 + d.y()) {
+                                            untouched = false; break;
+                                        }
+                                    if (untouched) { counterWin = true; break; }
+                            }
+                            if (!fatal && !counterWin) {
+                                bool coverable = threats.empty();
+                                if (!coverable) for (int firstPoint : threats.front()) {
+                                    const std::vector<int>* missed = nullptr;
+                                    for (const auto& threat : threats)
+                                        if (std::find(threat.begin(), threat.end(), firstPoint) == threat.end()) {
+                                            missed = &threat; break;
+                                        }
+                                    if (!missed) { coverable = true; break; }
+                                    for (int secondPoint : *missed) {
+                                        bool all = true;
+                                        for (const auto& threat : threats)
+                                            if (std::find(threat.begin(), threat.end(), firstPoint) == threat.end()
+                                                && std::find(threat.begin(), threat.end(), secondPoint) == threat.end()) {
+                                                all = false; break;
+                                            }
+                                        if (all) { coverable = true; break; }
+                                    }
+                                    if (coverable) break;
+                                }
+                                fatal = !coverable;
+                            }
+                        }
+                        m_chess[c.x()][c.y()] = 0;
+                        m_chess[d.x()][d.y()] = 0;
+                        if (!complete || timedOut() || m_timer.elapsed() >= exactDeadline) {
+                            complete = false;
+                            break;
+                        }
+                        if (fatal) {
+                            refutedCandidate = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            m_chess[a.x()][a.y()] = 0;
+            m_chess[b.x()][b.y()] = 0;
+            m_last = exactLast; m_llast = exactLLast;
+            m_search = exactSearch;
+            m_type = exactType;
+            if (refutedCandidate) {
+                ++exactRefuted;
+            } else if (complete) {
+                safe.emplace_back(candidate);
+                ++exactSafe;
+            } else {
+                unknownMoves.emplace_back(candidate);
+                ++exactUnknown;
+            }
+        }
+        if (!safe.empty()) {
+            std::sort(safe.begin(), safe.end(), [&](const Move& lhs, const Move& rhs) {
+                return evaluatePair(lhs.step1(), lhs.step2(), myPiece)
+                       > evaluatePair(rhs.step1(), rhs.step2(), myPiece);
+            });
+            exactSafeMoves = safe;
+            root = std::move(safe);
+            root.insert(root.end(), unknownMoves.begin(), unknownMoves.end());
+        } else if (!unknownMoves.empty()) {
+            root = std::move(unknownMoves);
+        } else {
+            root.resize(1);
+            rootTactic = -1;
+        }
+        unknown = exactUnknown;
+        excluded = exactRefuted;
+        qDebug() << "Exact defense probe: exactDefenseCandidates:" << rootCount
+                 << "safe:" << exactSafe << "unknown:" << exactUnknown
+                 << "refuted:" << exactRefuted << "replies:" << exactReplies
+                 << "elapsedMs:" << m_timer.elapsed();
+    }
+    qint64 probeDeadline = std::min(PROBE_DISCOVERY_MS, m_timeLimitMs);
+    const auto probe = [&](const Move& mv, bool witnessOnly) {
+        if (timedOut() || m_timer.elapsed() >= probeDeadline) return -2;
+        ++probeCount;
+        const QPoint a = mv.step1(), b = mv.step2();
+        m_chess[a.x()][a.y()] = myPiece;
+        m_chess[b.x()][b.y()] = myPiece;
+        int result = 0;
+        Move witness;
+        if (!hasSix(a.x(), a.y(), myPiece) && !hasSix(b.x(), b.y(), myPiece)) {
+            std::vector<Move> status;
+            int tactic = tacticalMoves(oppPiece, status, 2, false, probeDeadline);
+            if (tactic == 1) {
+                result = -1;
+                witness = status.front();
+            } else if (tactic == -2) {
+                result = -2;
+            } else {
+                const auto checkReply = [&](const Move& reply) {
+                    if (timedOut() || m_timer.elapsed() >= probeDeadline) return -2;
+                    const QPoint c = reply.step1(), d = reply.step2();
+                    if (c == d || m_chess[c.x()][c.y()] || m_chess[d.x()][d.y()]) return 0;
+                    ++replyCount;
+                    m_chess[c.x()][c.y()] = oppPiece;
+                    m_chess[d.x()][d.y()] = oppPiece;
+                    int response = tacticalMoves(myPiece, status, 2, false, probeDeadline);
+                    // Own immediate win has precedence inside tacticalMoves.
+                    bool fatal = response == -1 || hasSix(c.x(), c.y(), oppPiece)
+                                 || hasSix(d.x(), d.y(), oppPiece);
+                    m_chess[c.x()][c.y()] = 0;
+                    m_chess[d.x()][d.y()] = 0;
+                    if (response == -2 || timedOut() || m_timer.elapsed() >= probeDeadline)
+                        return -2;
+                    return fatal ? -1 : 0;
+                };
+                for (const Move& reply : witnesses) {
+                    result = checkReply(reply);
+                    if (result != 0) { witness = reply; break; }
+                }
+                if (result == 0 && !witnessOnly) {
+                    // Rank replies on the post-root board: before the root defense,
+                    // the opponent may have an immediate win which is now blocked.
+                    std::vector<Move> replies;
+                    auto search = m_search;
+                    rebuildSearch();
+                    int replyTactic = generateCandidates(oppPiece, replies, PROBE_POINTS,
+                                                         PROBE_REPLIES, 2, probeDeadline);
+                    m_search = std::move(search);
+                    if (replyTactic == -2) result = -2;
+                    if (replies.size() > PROBE_REPLIES) replies.resize(PROBE_REPLIES);
+                    if (result == 0)
+                        for (const Move& reply : replies) {
+                            result = checkReply(reply);
+                            if (result != 0) { witness = reply; break; }
+                        }
+                }
+            }
+        }
+        m_chess[a.x()][a.y()] = 0;
+        m_chess[b.x()][b.y()] = 0;
+        if (result == -1) {
+            if (!std::any_of(witnesses.begin(), witnesses.end(), [&](const Move& reply) {
+                    return (reply.step1() == witness.step1() && reply.step2() == witness.step2())
+                        || (reply.step1() == witness.step2() && reply.step2() == witness.step1());
+                })) witnesses.push_back(witness);
+            qDebug() << "Root counterexample:" << notation(a) << notation(b)
+                     << "reply:" << notation(witness.step1()) << notation(witness.step2())
+                     << "elapsedMs:" << m_timer.elapsed();
+        }
+        return result;
+    };
+    if (!exactDefenseHandled && rootTactic != 1 && rootTactic != -1) {
+        for (size_t i = 0; i < root.size(); ++i) {
+            int result = probe(root[i], false);
+            probeCompleted[i] = result != -2;
+            if (result == -1) { refuted[i] = true; ++excluded; }
+            if (result == -2) break;
+        }
+        // Reserve time to propagate discovered counterexamples to other root
+        // groups, including ones not reached by the expensive reply ranking.
+        probeDeadline = std::min(PROBE_BUDGET_MS, m_timeLimitMs);
+        if (!witnesses.empty())
+            for (size_t i = 0; i < root.size(); ++i) {
+                if (refuted[i]) continue;
+                int result = probe(root[i], true);
+                if (result == -1) { refuted[i] = true; ++excluded; }
+                if (result == -2) break;
+            }
+        unknown = 0;
+        for (size_t i = 0; i < root.size(); ++i)
+            if (!refuted[i] && !probeCompleted[i]) ++unknown;
+        std::vector<Move> survivors;
+        for (size_t i = 0; i < root.size(); ++i)
+            if (!refuted[i]) survivors.push_back(root[i]);
+        if (!survivors.empty()) root = std::move(survivors);
+        else if (rootTactic == 2) {
+            // All exact threat covers have concrete counterexamples.
+            qDebug() << "All required root covers refuted; committing a legal losing move";
+            root.resize(1);
+            rootTactic = -1;
+        } else {
+            // Try one ranked secondary batch, using the same witnesses and
+            // deadline. Neither a finite check nor an interruption proves safety.
+            std::vector<Move> rejected = root, secondary;
+            if (!timedOut() && m_timer.elapsed() < probeDeadline) {
+                int tactic = generateCandidates(myPiece, secondary, 40, 50,
+                                                 stonesRemaining, probeDeadline);
+                if (tactic != -2)
+                    for (const Move& mv : secondary) {
+                        bool known = std::any_of(rejected.begin(), rejected.end(), [&](const Move& old) {
+                            return (old.step1() == mv.step1() && old.step2() == mv.step2())
+                                || (old.step1() == mv.step2() && old.step2() == mv.step1());
+                        });
+                        if (known) continue;
+                        if (secondaryCount == 25) break;
+                        ++secondaryCount;
+                        int result = probe(mv, false);
+                        if (result == -1) { rejected.push_back(mv); ++excluded; }
+                        else {
+                            survivors.push_back(mv);
+                            if (result == -2) ++unknown;
+                        }
+                    }
+            }
+            // If ranking/checking ran out of time, keep a legal unknown outside
+            // all refuted batches. Never silently recycle a concrete counterexample.
+            for (int i = 0; i < 361 && survivors.empty(); ++i) {
+                QPoint a(i / 19, i % 19);
+                if (m_chess[a.x()][a.y()]) continue;
+                for (int j = stonesRemaining == 1 ? i : i + 1; j < 361; ++j) {
+                    QPoint b(j / 19, j % 19);
+                    if (m_chess[b.x()][b.y()]) continue;
+                    bool known = std::any_of(rejected.begin(), rejected.end(), [&](const Move& mv) {
+                        return (mv.step1() == a && mv.step2() == b)
+                            || (mv.step1() == b && mv.step2() == a);
+                    });
+                    if (!known) { survivors.emplace_back(a, b, 0); ++unknown; break; }
+                    if (stonesRemaining == 1) break;
+                }
+            }
+            if (!survivors.empty()) root = std::move(survivors);
+            else { root.resize(1); rootTactic = -1; }
+        }
+    }
+    qDebug() << "Root precheck: candidates:" << rootCount << "probes:" << probeCount
+             << "secondaryCandidates:" << secondaryCount
+             << "replies:" << replyCount
+             << "excluded:" << excluded << "unknown:" << unknown
+             << "elapsedMs:" << m_timer.elapsed();
+
+    int bestScore = rootTactic == 1 ? WIN_SCORE :
+                    rootTactic == -1 ? -WIN_SCORE : -INF;
+    Move bestMove = root[0];
+
+    const int maxDepth = 6;
+    int completedDepth = 0;
+    for (int depth = 1; rootTactic != 1 && rootTactic != -1 && depth <= maxDepth; depth++) {
+        int iterBestScore = -INF;
+        Move iterBest = bestMove;
+
+        auto pv = std::find_if(root.begin(), root.end(), [&](const Move& mv) {
+            return mv.step1() == bestMove.step1() && mv.step2() == bestMove.step2();
+        });
+        if (pv != root.end()) std::iter_swap(root.begin(), pv);
+
+        for (const Move& mv : root) {
+            if (timedOut()) break;
+            QPoint a = mv.step1(), b = mv.step2();
+            if (m_chess[a.x()][a.y()] != 0 || m_chess[b.x()][b.y()] != 0) continue;
+
+            QPoint savedLast = m_last, savedLLast = m_llast;
+            m_chess[a.x()][a.y()] = myPiece;
+            if (stonesRemaining == 2) m_chess[b.x()][b.y()] = myPiece;
+            m_last = a; m_llast = b;
+
+            int score;
+            if (hasSix(a.x(), a.y(), myPiece) ||
+                (stonesRemaining == 2 && hasSix(b.x(), b.y(), myPiece))) {
+                score = WIN_SCORE;
+            } else {
+                rebuildSearch();
+                score = -negamax(depth - 1, -INF, -iterBestScore, oppPiece);
+            }
+
+            m_chess[a.x()][a.y()] = 0;
+            if (stonesRemaining == 2) m_chess[b.x()][b.y()] = 0;
+            m_last = savedLast; m_llast = savedLLast;
+            m_search = savedSearch;
+
+            if (timedOut()) break;
+            if (score > iterBestScore) {
+                iterBestScore = score;
+                iterBest = Move(a, b, score);
+            }
+        }
+
+        if (m_timedOut)
+            break;
+
+        bestScore = iterBestScore;
+        bestMove = iterBest;
+        completedDepth = depth;
+
+        // 若已找到必胜走法，提前结束
+        if (bestScore >= WIN_SCORE)
+            break;
+
+        if (m_timer.elapsed() >= m_timeLimitMs)
+            break;
+    }
+
+    if (!exactSafeMoves.empty()) {
+        const bool selectedSafe = std::any_of(exactSafeMoves.begin(), exactSafeMoves.end(), [&](const Move& mv) {
+            return (mv.step1() == bestMove.step1() && mv.step2() == bestMove.step2())
+                || (mv.step1() == bestMove.step2() && mv.step2() == bestMove.step1());
+        });
+        if (!selectedSafe) {
+            bestMove = exactSafeMoves.front();
+            bestScore = evaluatePair(bestMove.step1(), bestMove.step2(), myPiece);
+        }
+    }
+
+    m_type = savedType;
+    m_last = savedLastG; m_llast = savedLLastG;
+    m_search = originalSearch;
+    qDebug() << "Search completedDepth:" << completedDepth << "Score:" << bestScore
+             << "excluded:" << excluded << "qNodes:" << m_qNodes
+             << "elapsedMs:" << m_timer.elapsed()
+             << "move:" << notation(bestMove.step1()) << notation(bestMove.step2());
+
+    if (bestScore != -INF) bestMove.setScore(bestScore);
+    m_chosenMove = bestMove;
+    std::vector<QPoint> temp;
+
+    set(bestMove.step1());
+    add(bestMove.step1(), temp);
+    emit chessChange(bestMove.step1(), myPiece);
+    if (isEnd()) { emit stop(); whoWin(); return; }
+    if (stonesRemaining == 1) {
+        swap();
+        return;
+    }
+    set(bestMove.step2());
+    add(bestMove.step2(), temp);
+    emit chessChange(bestMove.step2(), myPiece);
+    if (isEnd()) { emit stop(); whoWin(); return; }
+    swap();
+}

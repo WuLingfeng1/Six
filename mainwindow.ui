@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>505</width>
-    <height>477</height>
+    <width>465</width>
+    <height>434</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -68,7 +68,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>505</width>
+     <width>465</width>
      <height>21</height>
     </rect>
    </property>
@@ -150,7 +150,7 @@
   <customwidget>
    <class>Chequer</class>
    <extends>QWidget</extends>
-   <header>chequer.h</header>
+   <header>Chequer.h</header>
   </customwidget>
   <customwidget>
    <class>Options</class>

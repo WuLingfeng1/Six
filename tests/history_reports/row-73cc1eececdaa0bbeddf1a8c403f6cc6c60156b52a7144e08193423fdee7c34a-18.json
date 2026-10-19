@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 2,
+    "elapsed_ms": 2000,
+    "file": "C6-重师Bvs沈阳建筑W-先手胜-zzz.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J15",
+            "L17"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 52326,
+            "elapsed_ms": 2,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 52326,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J15",
+            "J16"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 52326,
+            "elapsed_ms": 1,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 52326,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 56,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "cba8e3dc94bd09a81c777a6b30552a9da6b2a7efc08e88a58c47fce67158a96e",
+    "stones": 35,
+    "timed_out": true,
+    "turn": 19
+}

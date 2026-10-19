@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 4,
+    "elapsed_ms": 2000,
+    "file": "C6-重师Bvs宿州大学W-平局-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "Q6",
+            "I1"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 6216,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 6216,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "E6",
+            "I6"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 6216,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 6216,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 0,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "d91d25761160e15a633073f277052a9cd5ca1dda70da87d8268c884a485b434e",
+    "stones": 247,
+    "timed_out": true,
+    "turn": 125
+}

@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/six">
+        <file alias="bg.png">资源文件/bg.png</file>
+        <file alias="black.png">资源文件/black.png</file>
+        <file alias="white.png">资源文件/white.png</file>
+    </qresource>
+</RCC>

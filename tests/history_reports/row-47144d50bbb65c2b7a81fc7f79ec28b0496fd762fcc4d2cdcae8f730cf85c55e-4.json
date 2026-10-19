@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-重师BvsqqW-先手胜-zx.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J8",
+            "I10"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 61776,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 61776,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "I10",
+            "K12"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 61776,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 61776,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 6493,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "12d1e356764915df76d64578383092ce8cc505e9d39606129cdd5e798e52f55f",
+    "stones": 7,
+    "timed_out": true,
+    "turn": 5
+}

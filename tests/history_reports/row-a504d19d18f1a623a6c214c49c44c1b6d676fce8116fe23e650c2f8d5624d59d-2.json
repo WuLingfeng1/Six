@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "I9",
+            "H9"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 63190,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 63190,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "H9",
+            "I9"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 63190,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 63190,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 1442,
+    "role": "opponent_control",
+    "save_signals": 0,
+    "source_sha256": "03a38b47974f889e2f0a7de0122c4eda8853b60d7d83c1d2254d357bab2aceda",
+    "stones": 3,
+    "timed_out": true,
+    "turn": 3
+}

@@ -1,0 +1,40 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 6,
+    "elapsed_ms": 40,
+    "file": "C6-重师Bvs沈阳建筑W-先手胜-zzz.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "S17",
+            "S16"
+        ],
+        "own_six": false,
+        "status": "full_draw"
+    },
+    "next_step": 2,
+    "next_type": 1,
+    "old": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "S17",
+            "S16"
+        ],
+        "own_six": false,
+        "status": "full_draw"
+    },
+    "production_score": 0,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "cba8e3dc94bd09a81c777a6b30552a9da6b2a7efc08e88a58c47fce67158a96e",
+    "stones": 359,
+    "timed_out": false,
+    "turn": 181
+}

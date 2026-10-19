@@ -1,0 +1,143 @@
+{
+    "checks": [
+        {
+            "agreement": true,
+            "known_reply": [
+                "F11",
+                "F13"
+            ],
+            "known_reply_refutes": true,
+            "optimized": {
+                "checked": 45451,
+                "elapsed_ms": 2,
+                "refutations": 2,
+                "status": "refuted",
+                "total": 45451,
+                "witness": {
+                    "kind": "uncoverable_no_counterwin",
+                    "own_immediate_counterwin": false,
+                    "reply": [
+                        "F13",
+                        "F11"
+                    ],
+                    "threats": [
+                        [
+                            "F15",
+                            "F14"
+                        ],
+                        [
+                            "F15",
+                            "F14"
+                        ],
+                        [
+                            "F14",
+                            "F9"
+                        ],
+                        [
+                            "F9",
+                            "F8"
+                        ],
+                        [
+                            "D11",
+                            "E11"
+                        ]
+                    ]
+                }
+            },
+            "original_checked": 45451,
+            "original_forced": true,
+            "original_ms": 55,
+            "white_move": [
+                "E9",
+                "G18"
+            ]
+        },
+        {
+            "agreement": true,
+            "known_reply": [
+                "F11",
+                "F13"
+            ],
+            "known_reply_refutes": false,
+            "optimized": {
+                "checked": 45451,
+                "elapsed_ms": 2,
+                "refutations": 0,
+                "status": "safe_one_reply",
+                "total": 45451,
+                "witness": {
+                }
+            },
+            "original_checked": 45451,
+            "original_forced": false,
+            "original_ms": 46,
+            "white_move": [
+                "E9",
+                "F14"
+            ]
+        }
+    ],
+    "expired_deadline": {
+        "checked": 0,
+        "elapsed_ms": 0,
+        "refutations": 0,
+        "status": "unknown",
+        "total": 42195,
+        "witness": {
+        }
+    },
+    "qt_version": "6.9.2",
+    "scope": "oracle agreement and terminal behavior only, not a game win",
+    "source_sha256": "985f070ca282e255c0e3ae431fc39b7052b555c14fe92a6f392bd6830fec6a85",
+    "terminal_checks": [
+        {
+            "color": 1,
+            "first_stone_six": {
+                "error": "",
+                "legal": true,
+                "move": [
+                    "J11"
+                ],
+                "own_six": true,
+                "status": "direct_win"
+            },
+            "nonterminal_single": {
+                "error": "incomplete nonterminal turn",
+                "legal": false,
+                "move": [
+                    "S1"
+                ],
+                "status": "illegal"
+            },
+            "orphan_rejected": true,
+            "production_emitted": [
+                "J11"
+            ]
+        },
+        {
+            "color": 2,
+            "first_stone_six": {
+                "error": "",
+                "legal": true,
+                "move": [
+                    "J11"
+                ],
+                "own_six": true,
+                "status": "direct_win"
+            },
+            "nonterminal_single": {
+                "error": "incomplete nonterminal turn",
+                "legal": false,
+                "move": [
+                    "S1"
+                ],
+                "status": "illegal"
+            },
+            "orphan_rejected": true,
+            "production_emitted": [
+                "J11"
+            ]
+        }
+    ],
+    "white15_source": "/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt"
+}

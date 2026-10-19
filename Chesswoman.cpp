@@ -24,10 +24,10 @@ void Chesswoman::draw(QPainter *painter,int grid)
 {
     if(m_type==1)
         painter->drawPixmap(QRect(m_x * grid + 0.5 * grid, m_y * grid + 0.5 * grid, grid, grid),
-                            QPixmap("./资源文件/black.png"));
+                            QPixmap(":/six/black.png"));
     else  if(m_type==2)
         painter->drawPixmap(QRect(m_x * grid + 0.5 * grid, m_y * grid + 0.5 * grid, grid, grid),
-                            QPixmap("./资源文件/white.png"));
+                            QPixmap(":/six/white.png"));
 }
 
 int Chesswoman::type() const

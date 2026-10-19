@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 4,
+    "elapsed_ms": 2000,
+    "file": "C6-重师Bvs大连交通大学W-先手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "L10",
+            "J12"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 61776,
+            "elapsed_ms": 1,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 61776,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "K12",
+            "L11"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 61776,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 61776,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": -3185,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "ee7ac89bcd2d63f72ae29deaa3e763dc98ba29dbb7a0641633cfae1656bebb71",
+    "stones": 7,
+    "timed_out": true,
+    "turn": 5
+}

@@ -1,8 +1,10 @@
 #ifndef GAME_H
 #define GAME_H
 #include <QObject>
-#include<iostream>
-#include"Move.h"
+#include <iostream>
+#include <vector>
+#include <QElapsedTimer>
+#include "Move.h"
 
 #define WIN_BLACK 1
 #define WIN_WHITE 2
@@ -19,58 +21,72 @@ public:
     bool isEnd();
     void swap();
     void set(QPoint location);
-    void add(QPoint location, std::vector<QPoint>& lastAdd);//下棋后扩展搜索队列，第二个参数保存这一步添加的扩展区域，在后来模拟走法的时候方便撤回
-    void retract(QPoint location,std::vector<QPoint>&lastAdd);//传add的中第二个参数代表的这一步加入的扩展队列，在search中做删除
-    void make(QPoint, QPoint);//模拟落子，即不扩展
+    void add(QPoint location, std::vector<QPoint>& lastAdd);
+    void retract(QPoint location,std::vector<QPoint>&lastAdd);
+    void make(QPoint, QPoint);
     void unmake(QPoint, QPoint);
-    void mergeSort(Move list[], int n);//归并排序
-    void mergePass(Move list[], Move t[], int s, int n);
-    void merge(Move list[], Move t[], int l, int m, int r);
     void analyzeDir(int px, int py, int dx, int dy,
                     int skipX, int skipY, int dirIdx);
-    void AnalyFourConnect();//判断是活四还是眠四，数组对应增加
-    void resetFourConnect();//重置四个方向的连四计数
-    bool CheckWinningPatterns();//检查必胜棋型
+    void AnalyFourConnect();
+    void resetFourConnect();
+    bool CheckWinningPatterns();
     int estimate();
-    void Comb(Move list[], int n);
+    int evaluateBoard();
+    int evaluatePoint(int x, int y, int piece);
+    int evaluatePair(QPoint a, QPoint b, int piece);
+    bool hasSix(int x, int y, int piece);
+    void rebuildSearch();
+    // 1: immediate win, 2: required defenses, -1: undefendable, 0: quiet.
+    // -2: interrupted/unknown. enumerate=false only checks existence of a cover.
+    int tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaining = 2,
+                      bool enumerate = true, qint64 deadlineMs = -1);
+    // Interrupted ranking returns -2 with out cleared, never a partial quiet list.
+    int generateCandidates(int pieceType, std::vector<Move>& out,
+                           int maxPoints, int maxPairs, int stonesRemaining = 2,
+                           qint64 deadlineMs = -1);
+    int negamax(int depth, int alpha, int beta, int pieceType, int qply = 0);
+    void bestPlay(int stonesRemaining = 2);
+    bool timedOut();
     bool contain(const std::vector<QPoint>&, QPoint) const;
     int type() const;
     void setType(int newType);
-    void stepadd();//步数的增加和减少，在chequer对手操作时调用
+    void stepadd();
     void stepdec();
     int step() const;
 
 signals:
     void chessChange(QPoint ,int);
-    void undoenable();//撤回键可用信号
+    void undoenable();
     void save_signal();
-    void restart(int);//给时钟发送的重新计时
-    void stop();//停止计时，显示结果
-//    void clickoff();//向窗口发送点击失效的信号
-//    void clickon();//向窗口发送可以点击的信号
+    void restart(int);
+    void stop();
 public slots:
     void whoFirst(int type);
     void whoPlay(int type);
     void gameundo(int x,int y);
     void whoWin();
+
 private:
     int numberOfMyRoad[7]{ 0 };
     int numberOfEnemyRoad[7]{ 0 };
-    int scoreOfMyRoad[7]{ 0,1,5,30,120,3000,100000 };
-    int scoreOfEnemyRoad[7]{ 0,10,40,80,5000,6000,100000 };
-    int scoreOfWinningChessPattern[2]{0, 2000};//形成必胜棋型的步额外加2000
-    int m_fourConnect[4][2]{};//四个方向的眠四[0]/活四[1]计数: 0=横 1=竖 2=右斜 3=左斜
+    int scoreOfMyRoad[7]{ 0,1,20,300,2000,6000,100000 };
+    int scoreOfEnemyRoad[7]{ 0,1,20,300,2000,6000,100000 };
+    int scoreOfWinningChessPattern[2]{0, 2000};
+    int m_fourConnect[4][2]{};
 
-    int m_chess[19][19];//棋盘信息
-    std::vector< QPoint>m_search;//搜索队列
-    int m_step;//下的步数
-    int m_win;//记录谁赢
-    int m_type;//记录我方的类型
-    int m_count;//保存一共生成多少中组合走法
-    QPoint m_last;//
-    QPoint m_llast;//记录上两次落子点
+    int m_chess[19][19];
+    std::vector<QPoint>m_search;
+    int m_step;
+    int m_win;
+    int m_type;
+    QPoint m_last;
+    QPoint m_llast;
 
-
+    QElapsedTimer m_timer;
+    qint64 m_timeLimitMs;
+    bool m_timedOut;
+    int m_qNodes = 0; // Cumulative extension budget for one bestPlay, not per iteration.
+    Move m_chosenMove;
 };
 
 #endif // GAME_H

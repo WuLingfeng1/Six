@@ -1,0 +1,10 @@
+QT += core gui widgets testlib
+CONFIG += console c++17
+CONFIG -= app_bundle
+TEMPLATE = app
+TARGET = self_iteration
+INCLUDEPATH += ..
+GAME_DIR = ..
+SOURCES += self_iteration.cpp $$GAME_DIR/Game.cpp $$GAME_DIR/Move.cpp
+HEADERS += $$GAME_DIR/Game.h $$GAME_DIR/Move.h
+INCLUDEPATH += $$GAME_DIR

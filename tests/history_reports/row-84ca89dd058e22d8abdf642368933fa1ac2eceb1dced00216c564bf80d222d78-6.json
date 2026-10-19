@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-安徽大学Bvs重师W-先手胜-fff.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "F15",
+            "L9"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 60378,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 60378,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "G14",
+            "L9"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 60378,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 60378,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 2340,
+    "role": "opponent_control",
+    "save_signals": 0,
+    "source_sha256": "6756cb291c796f5e55b94683c0163419bb0abf9388a5ba91c67460485f82f8b6",
+    "stones": 11,
+    "timed_out": true,
+    "turn": 7
+}

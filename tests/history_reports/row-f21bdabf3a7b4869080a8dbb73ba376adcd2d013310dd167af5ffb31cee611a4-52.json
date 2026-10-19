@@ -1,0 +1,114 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 1,
+    "file": "C6-aaaBvsxxxW-后手胜-z.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "K8",
+            "Q8"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 32640,
+            "elapsed_ms": 1,
+            "refutations": 2,
+            "status": "refuted",
+            "total": 32640,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "O10",
+                    "O7"
+                ],
+                "threats": [
+                    [
+                        "O12",
+                        "O11"
+                    ],
+                    [
+                        "O11",
+                        "O6"
+                    ],
+                    [
+                        "O6",
+                        "O5"
+                    ],
+                    [
+                        "L10",
+                        "P6"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "L8",
+            "R8"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 32640,
+            "elapsed_ms": 1,
+            "refutations": 2,
+            "status": "refuted",
+            "total": 32640,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "O10",
+                    "O7"
+                ],
+                "threats": [
+                    [
+                        "O12",
+                        "O11"
+                    ],
+                    [
+                        "O11",
+                        "O6"
+                    ],
+                    [
+                        "O6",
+                        "O5"
+                    ],
+                    [
+                        "L10",
+                        "P6"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "production_score": -100000000,
+    "role": "non_chongshi",
+    "save_signals": 0,
+    "source_sha256": "754e398977f2fd9e97d10f912044fe607061335205b14818cef4256b3b7fbe6e",
+    "stones": 103,
+    "timed_out": false,
+    "turn": 53
+}

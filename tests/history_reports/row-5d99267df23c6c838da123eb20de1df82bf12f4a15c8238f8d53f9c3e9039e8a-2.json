@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "K11",
+            "L11"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 63190,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 63190,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "K9",
+            "I8"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 63190,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 63190,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 1442,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "2d09ce45824f580c49d1313d682a9927f3663e94c5348ba5b39e6f81b17d0519",
+    "stones": 3,
+    "timed_out": true,
+    "turn": 3
+}

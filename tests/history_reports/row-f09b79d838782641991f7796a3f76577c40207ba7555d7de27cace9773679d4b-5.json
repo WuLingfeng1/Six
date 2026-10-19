@@ -1,0 +1,51 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "W",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-啊啊啊下Bvs说W-先手胜-暗示.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 2,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J9",
+            "L11"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 61075,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 61075,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 1,
+    "old": {
+        "error": "incomplete nonterminal turn",
+        "legal": false,
+        "move": [
+            "M10"
+        ],
+        "status": "illegal"
+    },
+    "production_score": 2392,
+    "role": "non_chongshi",
+    "save_signals": 0,
+    "source_sha256": "240143caf7d8ae14b128942f8d9032ff768794e14f8543fc190c976010a4e407",
+    "stones": 9,
+    "timed_out": true,
+    "turn": 6
+}

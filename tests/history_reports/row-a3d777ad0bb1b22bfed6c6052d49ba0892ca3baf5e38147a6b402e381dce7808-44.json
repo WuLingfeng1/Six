@@ -1,0 +1,114 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 1,
+    "file": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J4",
+            "P4"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 36856,
+            "elapsed_ms": 1,
+            "refutations": 3,
+            "status": "refuted",
+            "total": 36856,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "P6",
+                    "M3"
+                ],
+                "threats": [
+                    [
+                        "R8",
+                        "Q7"
+                    ],
+                    [
+                        "Q7",
+                        "L2"
+                    ],
+                    [
+                        "L2",
+                        "K1"
+                    ],
+                    [
+                        "M2",
+                        "M1"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J4",
+            "P4"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 36856,
+            "elapsed_ms": 1,
+            "refutations": 3,
+            "status": "refuted",
+            "total": 36856,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "P6",
+                    "M3"
+                ],
+                "threats": [
+                    [
+                        "R8",
+                        "Q7"
+                    ],
+                    [
+                        "Q7",
+                        "L2"
+                    ],
+                    [
+                        "L2",
+                        "K1"
+                    ],
+                    [
+                        "M2",
+                        "M1"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "refuted"
+    },
+    "production_score": -100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "1afe64f951a7f27fc8c597502ee0266e339a870a7b1af64ba0136427423246d9",
+    "stones": 87,
+    "timed_out": false,
+    "turn": 45
+}

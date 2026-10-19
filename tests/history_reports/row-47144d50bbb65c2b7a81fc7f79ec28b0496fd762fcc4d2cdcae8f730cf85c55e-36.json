@@ -1,0 +1,40 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 41,
+    "file": "C6-重师BvsqqW-先手胜-zx.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "I8",
+            "H7"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "next_step": 2,
+    "next_type": 1,
+    "old": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "I8",
+            "H7"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "production_score": 100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "12d1e356764915df76d64578383092ce8cc505e9d39606129cdd5e798e52f55f",
+    "stones": 71,
+    "timed_out": false,
+    "turn": 37
+}

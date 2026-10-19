@@ -1,0 +1,64 @@
+{
+    "blackFirst": true,
+    "board_matches_signals": true,
+    "budget_ms": 0,
+    "color": "B",
+    "completedDepth": -1,
+    "elapsed_ms": 0,
+    "file": "C6-哎哎哎Bvs哎哎哎哎哎哎W-先手胜-啊.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J10"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 64620,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 64620,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "J10"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 64620,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 64620,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": null,
+    "role": "non_chongshi",
+    "save_signals": 0,
+    "source_sha256": "05a4bb52e6c099d7006e9b1bcb85652229e728df6db30d67465e282206b86869",
+    "stones": 0,
+    "timed_out": false,
+    "turn": 1
+}

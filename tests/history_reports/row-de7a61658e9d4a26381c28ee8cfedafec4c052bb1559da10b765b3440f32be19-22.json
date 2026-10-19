@@ -1,0 +1,66 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 1,
+    "elapsed_ms": 21,
+    "file": "C6-重师Bvs吉林大学二队W-先手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "L15",
+            "M10"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 49770,
+            "elapsed_ms": 2,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 49770,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "M10",
+            "P11"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 49770,
+            "elapsed_ms": 2,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 49770,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "production_score": 100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "b076d66c8b797a7551fa2514d47125776cf606555b45574b3d206f43d8052184",
+    "stones": 43,
+    "timed_out": false,
+    "turn": 23
+}

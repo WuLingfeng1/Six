@@ -1,0 +1,9 @@
+QT += core gui widgets
+CONFIG += console c++17
+CONFIG -= app_bundle debug
+TEMPLATE = app
+TARGET = backward_analysis
+GAME_DIR = ..
+SOURCES += backward_analysis.cpp $$GAME_DIR/Game.cpp $$GAME_DIR/Move.cpp
+HEADERS += $$GAME_DIR/Game.h $$GAME_DIR/Move.h
+INCLUDEPATH += $$GAME_DIR

@@ -1,0 +1,40 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "W",
+    "completedDepth": 0,
+    "elapsed_ms": 38,
+    "file": "C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 2,
+    "new": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "N18",
+            "M17"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "next_step": 2,
+    "next_type": 2,
+    "old": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "M17",
+            "N18"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "production_score": 100000000,
+    "role": "opponent_control",
+    "save_signals": 0,
+    "source_sha256": "2d09ce45824f580c49d1313d682a9927f3663e94c5348ba5b39e6f81b17d0519",
+    "stones": 29,
+    "timed_out": false,
+    "turn": 16
+}

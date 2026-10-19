@@ -1,0 +1,97 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 3,
+    "elapsed_ms": 2000,
+    "file": "C6-aaaBvsxxxW-后手胜-z.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": false,
+        "legal": true,
+        "move": [
+            "O13",
+            "N15"
+        ],
+        "opponent_completions": [
+        ],
+        "oracle": {
+            "checked": 26796,
+            "elapsed_ms": 0,
+            "refutations": 0,
+            "status": "safe_one_reply",
+            "total": 26796,
+            "witness": {
+            }
+        },
+        "own_six": false,
+        "status": "safe_one_reply"
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": true,
+        "legal": true,
+        "move": [
+            "K17",
+            "F15"
+        ],
+        "opponent_completions": [
+            [
+                "O13",
+                "P12"
+            ]
+        ],
+        "oracle": {
+            "checked": 26796,
+            "elapsed_ms": 2,
+            "refutations": 20,
+            "status": "refuted",
+            "total": 26796,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "P18",
+                    "N16"
+                ],
+                "threats": [
+                    [
+                        "O13",
+                        "P12"
+                    ],
+                    [
+                        "O17",
+                        "L14"
+                    ],
+                    [
+                        "M16",
+                        "O16"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "direct_loss",
+        "witness": {
+            "kind": "opponent_completion",
+            "reply": [
+                "O13",
+                "P12"
+            ]
+        }
+    },
+    "production_score": -96,
+    "role": "non_chongshi",
+    "save_signals": 0,
+    "source_sha256": "754e398977f2fd9e97d10f912044fe607061335205b14818cef4256b3b7fbe6e",
+    "stones": 127,
+    "timed_out": true,
+    "turn": 65
+}

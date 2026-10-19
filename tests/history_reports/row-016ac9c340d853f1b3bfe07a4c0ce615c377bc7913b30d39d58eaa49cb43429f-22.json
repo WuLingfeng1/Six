@@ -1,0 +1,40 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 42,
+    "file": "C6-重师Bvs北京信息科技大学W-先手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "P10",
+            "O9"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "next_step": 2,
+    "next_type": 1,
+    "old": {
+        "error": "",
+        "legal": true,
+        "move": [
+            "O9",
+            "P10"
+        ],
+        "own_six": true,
+        "status": "direct_win"
+    },
+    "production_score": 100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "3158e22a294c01cc6101f17d27ce4ddec262a6ea6087d3a13bb97c20b5b24268",
+    "stones": 43,
+    "timed_out": false,
+    "turn": 23
+}

@@ -1,0 +1,144 @@
+{
+    "blackFirst": false,
+    "board_matches_signals": true,
+    "budget_ms": 2000,
+    "color": "B",
+    "completedDepth": 0,
+    "elapsed_ms": 0,
+    "file": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+    "m_step_seed": 0,
+    "m_type_seed": 1,
+    "new": {
+        "covers": false,
+        "error": "",
+        "immediate_losing": true,
+        "legal": true,
+        "move": [
+            "A19",
+            "B19"
+        ],
+        "opponent_completions": [
+            [
+                "S8",
+                "R7"
+            ],
+            [
+                "R7",
+                "M2"
+            ],
+            [
+                "N2",
+                "N1"
+            ],
+            [
+                "M2",
+                "L1"
+            ]
+        ],
+        "oracle": {
+            "checked": 35778,
+            "elapsed_ms": 10,
+            "refutations": 35778,
+            "status": "refuted",
+            "total": 35778,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "C19",
+                    "D19"
+                ],
+                "threats": [
+                    [
+                        "S8",
+                        "R7"
+                    ],
+                    [
+                        "R7",
+                        "M2"
+                    ],
+                    [
+                        "N2",
+                        "N1"
+                    ],
+                    [
+                        "M2",
+                        "L1"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "direct_loss",
+        "witness": {
+            "kind": "opponent_completion",
+            "reply": [
+                "S8",
+                "R7"
+            ]
+        }
+    },
+    "next_step": 0,
+    "next_type": 2,
+    "old": {
+        "covers": true,
+        "error": "",
+        "immediate_losing": true,
+        "legal": true,
+        "move": [
+            "N2",
+            "M2"
+        ],
+        "opponent_completions": [
+            [
+                "S8",
+                "R7"
+            ]
+        ],
+        "oracle": {
+            "checked": 35778,
+            "elapsed_ms": 3,
+            "refutations": 18,
+            "status": "refuted",
+            "total": 35778,
+            "witness": {
+                "kind": "uncoverable_no_counterwin",
+                "own_immediate_counterwin": false,
+                "reply": [
+                    "A14",
+                    "B13"
+                ],
+                "threats": [
+                    [
+                        "S8",
+                        "R7"
+                    ],
+                    [
+                        "C12",
+                        "E10"
+                    ],
+                    [
+                        "A13",
+                        "D13"
+                    ]
+                ]
+            }
+        },
+        "own_six": false,
+        "status": "direct_loss",
+        "witness": {
+            "kind": "opponent_completion",
+            "reply": [
+                "S8",
+                "R7"
+            ]
+        }
+    },
+    "production_score": -100000000,
+    "role": "own",
+    "save_signals": 0,
+    "source_sha256": "1afe64f951a7f27fc8c597502ee0266e339a870a7b1af64ba0136427423246d9",
+    "stones": 91,
+    "timed_out": false,
+    "turn": 47
+}
