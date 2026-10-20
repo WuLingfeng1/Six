@@ -8,6 +8,7 @@
 #include <QRegularExpression>
 #include <QRadioButton>
 #include <iostream>
+#include <random>
 #include <vector>
 #define private public
 #include "Game.h"
@@ -474,6 +475,103 @@ private slots:
         }
         game.setType(1); const int black = game.evaluateBoard();
         game.setType(2); QCOMPARE(game.evaluateBoard(), -black);
+    }
+    void incrementalScoreConsistency() {
+        std::mt19937 rng(20261020u);
+        const auto checkCache = [](Game &game, const Referee &board) {
+            for (int color : {1, 2, 3}) {
+                game.setType(color);
+                QCOMPARE(game.evaluateBoard(), fullScore(board, color, game.scoreOfMyRoad));
+            }
+        };
+        for (int caseIndex = 0; caseIndex < 12; ++caseIndex) {
+            Referee random;
+            const int stones = 3 + int(rng() % 40);
+            for (int i = 0; i < stones; ++i) {
+                const int x = int(rng() % 19), y = int(rng() % 19);
+                if (random.board[x][y]) { --i; continue; }
+                random.board[x][y] = 1 + int(rng() % 2);
+                ++random.stones;
+            }
+            Game game;
+            seed(game, random, 1);
+            const auto search = game.m_search;
+            const QPoint last = game.m_last, llast = game.m_llast;
+            checkCache(game, random);
+            for (int color : {1, 2}) {
+                game.setType(color);
+                const int before = fullScore(random, color, game.scoreOfMyRoad);
+                for (int x = 0; x < 19; ++x)
+                    for (int y = 0; y < 19; ++y) {
+                        if (random.board[x][y]) continue;
+                        Referee after = random;
+                        after.board[x][y] = color;
+                        QCOMPARE(game.evaluatePoint(x, y, color),
+                                 fullScore(after, color, game.scoreOfMyRoad) - before);
+                    }
+                for (int sample = 0; sample < 120; ++sample) {
+                    QPoint a(int(rng() % 19), int(rng() % 19));
+                    QPoint b(int(rng() % 19), int(rng() % 19));
+                    if (sample % 17 == 0) b = a;
+                    Referee after = random;
+                    if (!after.board[a.x()][a.y()]) after.board[a.x()][a.y()] = color;
+                    if (!after.board[b.x()][b.y()]) after.board[b.x()][b.y()] = color;
+                    const int delta = fullScore(after, color, game.scoreOfMyRoad) - before;
+                    QCOMPARE(game.evaluatePair(a, b, color), delta);
+                    QCOMPARE(game.evaluatePair(b, a, color), delta);
+                }
+            }
+            const QPoint edges[][2] = {{QPoint(0, 0), QPoint(18, 18)},
+                                       {QPoint(0, 18), QPoint(18, 0)},
+                                       {QPoint(9, 0), QPoint(9, 18)},
+                                       {QPoint(0, 9), QPoint(18, 9)},
+                                       {QPoint(9, 9), QPoint(9, 9)}};
+            for (int color : {1, 2}) {
+                game.setType(color);
+                const int before = fullScore(random, color, game.scoreOfMyRoad);
+                for (const auto &edge : edges) {
+                    Referee after = random;
+                    if (!after.board[edge[0].x()][edge[0].y()])
+                        after.board[edge[0].x()][edge[0].y()] = color;
+                    if (!after.board[edge[1].x()][edge[1].y()])
+                        after.board[edge[1].x()][edge[1].y()] = color;
+                    QCOMPARE(game.evaluatePair(edge[0], edge[1], color),
+                             fullScore(after, color, game.scoreOfMyRoad) - before);
+                }
+            }
+            QVERIFY(snapshot(game).board == random.board);
+            QVERIFY(game.m_search == search);
+            QCOMPARE(game.m_last, last); QCOMPARE(game.m_llast, llast);
+            game.setType(2);
+            QCOMPARE(game.evaluateBoard(), fullScore(random, 2, game.scoreOfMyRoad));
+        }
+        Game gui;
+        gui.whoFirst(1);
+        QCOMPARE(gui.evaluateBoard(), fullScore(snapshot(gui), gui.type(), gui.scoreOfMyRoad));
+        std::vector<QPoint> added;
+        gui.set(QPoint(5, 5)); gui.add(QPoint(5, 5), added);
+        QCOMPARE(gui.evaluateBoard(), fullScore(snapshot(gui), gui.type(), gui.scoreOfMyRoad));
+        gui.retract(QPoint(5, 5), added);
+        QCOMPARE(gui.evaluateBoard(), fullScore(snapshot(gui), gui.type(), gui.scoreOfMyRoad));
+        gui.gameundo(9, 9);
+        QCOMPARE(gui.evaluateBoard(), fullScore(snapshot(gui), gui.type(), gui.scoreOfMyRoad));
+        QString error;
+        Referee anqing;
+        QVERIFY2(anqingPrefix15(anqing, error), qPrintable(error));
+        Game searched;
+        seed(searched, anqing, 1);
+        searched.bestPlay();
+        QCOMPARE(searched.evaluateBoard(),
+                 fullScore(snapshot(searched), searched.type(), searched.scoreOfMyRoad));
+        Referee small;
+        small.board[9][9] = 1;
+        small.board[8][9] = small.board[10][10] = 2;
+        small.stones = 3;
+        Game timed;
+        seed(timed, small, 2, 1);
+        timed.m_timer.start(); timed.m_timeLimitMs = 300;
+        timed.negamax(6, -1000000000, 1000000000, 1);
+        QCOMPARE(timed.evaluateBoard(), fullScore(snapshot(timed), timed.type(), timed.scoreOfMyRoad));
     }
     void timeoutRestoration() {
         Referee initial;

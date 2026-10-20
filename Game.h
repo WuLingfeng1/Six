@@ -120,6 +120,10 @@ private:
     int m_qNodes = 0; // Cumulative extension budget for one bestPlay, not per iteration.
     Move m_chosenMove;
     std::vector<TTEntry> m_tt;
+    int m_lineScore[2][112]{};
+    void recomputeLineScores();
+    void placeStone(int x, int y, int color);
+    void clearStone(int x, int y);
 };
 
 #endif // GAME_H

@@ -100,7 +100,7 @@ void Game::whoPlay(int type)
 
 void Game::gameundo(int x, int y)
 {
-    m_chess[x][y]=0;
+    clearStone(x, y);
     rebuildSearch();
 }
 
@@ -250,7 +250,7 @@ void Game::set(QPoint location)
     int x = location.x();
     int y = location.y();
 
-    m_chess[x][y] = m_type;
+    placeStone(x, y, m_type);
     if (contain(m_search, location))           //要先删掉再扩展
     {
         for (vector<QPoint>::iterator it = m_search.begin(); it != m_search.end(); it++)
@@ -312,7 +312,7 @@ void Game::retract(QPoint location,vector<QPoint>&lastAdd)
 {
     int x = location.x();
     int y = location.y();
-    m_chess[x][y] = 0;
+    clearStone(x, y);
     m_search.push_back(location);
     if (!lastAdd.empty())
     {
@@ -332,14 +332,14 @@ void Game::make(QPoint a, QPoint b)
 {
     m_last = a;
     m_llast = b;
-    m_chess[a.x()][a.y()] = m_type;
-    m_chess[b.x()][b.y()] = m_type;
+    placeStone(a.x(), a.y(), m_type);
+    placeStone(b.x(), b.y(), m_type);
 }
 
 void Game::unmake(QPoint a, QPoint b)
 {
-    m_chess[a.x()][a.y()] = 0;
-    m_chess[b.x()][b.y()] = 0;
+    clearStone(a.x(), a.y());
+    clearStone(b.x(), b.y());
 }
 
 void Game::analyzeDir(int px, int py, int dx, int dy,
@@ -561,8 +561,8 @@ int Game::estimate()
     int type = m_chess[x1][y1];
     const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
 
-    m_chess[x1][y1] = 0;
-    m_chess[x2][y2] = 0;
+    clearStone(x1, y1);
+    clearStone(x2, y2);
     for (int i = 0; i < 7; i++) {
         numberOfMyRoad[i] = 0;
         numberOfEnemyRoad[i] = 0;
@@ -576,8 +576,8 @@ int Game::estimate()
         pre += numberOfMyRoad[i] * scoreOfMyRoad[i] - numberOfEnemyRoad[i] * scoreOfEnemyRoad[i];
 
     resetFourConnect();
-    m_chess[x1][y1] = type;
-    m_chess[x2][y2] = type;
+    placeStone(x1, y1, type);
+    placeStone(x2, y2, type);
     for (int i = 0; i < 7; i++) {
         numberOfMyRoad[i] = 0;
         numberOfEnemyRoad[i] = 0;
@@ -628,34 +628,165 @@ static int lineShape(int run, int open)
     return 1;
 }
 
-int Game::evaluateBoard()
+namespace {
+constexpr int kDirections[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
+
+inline bool onBoard(int x, int y)
 {
-    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+    return x >= 0 && x < 19 && y >= 0 && y < 19;
+}
+
+inline void lineStart(int x, int y, int d, int& sx, int& sy)
+{
+    if (d == 0) { sx = x; sy = 0; }
+    else if (d == 1) { sx = 0; sy = y; }
+    else if (d == 2) { const int k = std::min(x, y); sx = x - k; sy = y - k; }
+    else { const int k = std::min(x, 18 - y); sx = x - k; sy = y + k; }
+}
+
+inline int lineId(int d, int x, int y)
+{
+    if (d == 0) return x;
+    if (d == 1) return 19 + y;
+    if (d == 2) return 38 + (x - y + 18);
+    return 75 + (x + y);
+}
+
+// The 112 maximal lines cover every run exactly once. lineShape() is
+// unchanged; this only changes how the same sum is maintained.
+void lineScorePair(const int (&board)[19][19], int sx, int sy, int dx, int dy,
+                   int& black, int& white)
+{
+    black = 0;
+    white = 0;
+    int x = sx, y = sy;
+    while (onBoard(x, y)) {
+        const int c = board[x][y];
+        if (c == 0) { x += dx; y += dy; continue; }
+        int run = 1;
+        int nx = x + dx, ny = y + dy;
+        while (onBoard(nx, ny) && board[nx][ny] == c) {
+            ++run;
+            nx += dx;
+            ny += dy;
+        }
+        const int px = x - dx, py = y - dy;
+        const int open = (onBoard(px, py) && board[px][py] == 0 ? 1 : 0)
+                       + (onBoard(nx, ny) && board[nx][ny] == 0 ? 1 : 0);
+        const int shape = lineShape(run, open);
+        if (c == 1) black += shape;
+        else white += shape;
+        x = nx;
+        y = ny;
+    }
+}
+
+struct ColorDelta {
+    int black = 0;
+    int white = 0;
+};
+
+struct AdjacentRun {
+    int length = 0;
+    int color = 0;
+    int open = 0;
+};
+
+AdjacentRun adjacentRun(const int (&board)[19][19], int x, int y, int dx, int dy)
+{
+    AdjacentRun run;
+    int nx = x + dx, ny = y + dy;
+    if (!onBoard(nx, ny)) return run;
+    const int color = board[nx][ny];
+    if (color == 0) return run;
+    run.color = color;
+    while (run.length < 6 && onBoard(nx, ny) && board[nx][ny] == color) {
+        ++run.length;
+        nx += dx;
+        ny += dy;
+    }
+    run.open = (onBoard(nx, ny) && board[nx][ny] == 0) ? 1 : 0;
+    return run;
+}
+
+// Exact score change for placing `color` at the empty point (x, y), split by
+// color so the per-line cache can be updated in O(1) instead of rescanned.
+ColorDelta lineDeltaForPlacing(const int (&board)[19][19], int x, int y, int dx, int dy, int color)
+{
+    const AdjacentRun left = adjacentRun(board, x, y, -dx, -dy);
+    const AdjacentRun right = adjacentRun(board, x, y, dx, dy);
+    const bool leftOpen = onBoard(x - dx, y - dy) && board[x - dx][y - dy] == 0;
+    const bool rightOpen = onBoard(x + dx, y + dy) && board[x + dx][y + dy] == 0;
+    ColorDelta before, after;
+    if (left.length > 0) {
+        const int shape = lineShape(left.length, left.open + 1);
+        (left.color == 1 ? before.black : before.white) += shape;
+    }
+    if (right.length > 0) {
+        const int shape = lineShape(right.length, right.open + 1);
+        (right.color == 1 ? before.black : before.white) += shape;
+    }
+    if (left.length > 0 && right.length > 0 && left.color == color && right.color == color) {
+        (color == 1 ? after.black : after.white) +=
+            lineShape(std::min(6, left.length + right.length + 1), left.open + right.open);
+    } else if (left.length > 0 && left.color == color) {
+        (color == 1 ? after.black : after.white) +=
+            lineShape(std::min(6, left.length + 1), left.open + (rightOpen ? 1 : 0));
+    } else if (right.length > 0 && right.color == color) {
+        (color == 1 ? after.black : after.white) +=
+            lineShape(std::min(6, right.length + 1), right.open + (leftOpen ? 1 : 0));
+    } else {
+        (color == 1 ? after.black : after.white) +=
+            lineShape(1, (leftOpen ? 1 : 0) + (rightOpen ? 1 : 0));
+    }
+    if (left.length > 0 && left.color != color)
+        (left.color == 1 ? after.black : after.white) += lineShape(left.length, left.open);
+    if (right.length > 0 && right.color != color)
+        (right.color == 1 ? after.black : after.white) += lineShape(right.length, right.open);
+    return {after.black - before.black, after.white - before.white};
+}
+
+// Exact but slow fallback for callers that pass a piece outside {1, 2}; the
+// production search only uses 1/2, while tests may probe other values.
+int boardScoreForPiece(const int (&board)[19][19], int piece)
+{
+    const int DIR[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
     int score = 0;
-    for (int x = 0; x < 19; x++) {
-        for (int y = 0; y < 19; y++) {
-            const int c = m_chess[x][y];
+    for (int x = 0; x < 19; ++x) {
+        for (int y = 0; y < 19; ++y) {
+            const int c = board[x][y];
             if (c == 0) continue;
-            for (int d = 0; d < 4; d++) {
+            for (int d = 0; d < 4; ++d) {
                 const int dx = DIR[d][0], dy = DIR[d][1];
                 const int px = x - dx, py = y - dy;
-                if (px >= 0 && px < 19 && py >= 0 && py < 19 && m_chess[px][py] == c)
-                    continue;
+                if (onBoard(px, py) && board[px][py] == c) continue;
                 int run = 0, cx = x, cy = y;
-                while (cx >= 0 && cx < 19 && cy >= 0 && cy < 19 && m_chess[cx][cy] == c) {
-                    run++;
+                while (onBoard(cx, cy) && board[cx][cy] == c) {
+                    ++run;
                     cx += dx;
                     cy += dy;
                 }
-                const bool open1 = (px >= 0 && px < 19 && py >= 0 && py < 19 && m_chess[px][py] == 0);
-                const bool open2 = (cx >= 0 && cx < 19 && cy >= 0 && cy < 19 && m_chess[cx][cy] == 0);
-                const int open = (open1 ? 1 : 0) + (open2 ? 1 : 0);
+                const int open = (onBoard(px, py) && board[px][py] == 0 ? 1 : 0)
+                               + (onBoard(cx, cy) && board[cx][cy] == 0 ? 1 : 0);
                 const int shape = lineShape(run, open);
-                score += (c == m_type) ? shape : -shape;
+                score += (c == piece ? shape : -shape);
             }
         }
     }
     return score;
+}
+}
+
+int Game::evaluateBoard()
+{
+    int black = 0, white = 0;
+    for (int i = 0; i < 112; ++i) {
+        black += m_lineScore[0][i];
+        white += m_lineScore[1][i];
+    }
+    if (m_type == 1) return black - white;
+    if (m_type == 2) return white - black;
+    return -(black + white);
 }
 
 int Game::evaluatePoint(int x, int y, int piece)
@@ -665,20 +796,138 @@ int Game::evaluatePoint(int x, int y, int piece)
 
 int Game::evaluatePair(QPoint a, QPoint b, int piece)
 {
-    const int savedType = m_type;
-    m_type = piece;
-    const int ax = a.x(), ay = a.y(), bx = b.x(), by = b.y();
-    const bool emptyA = (m_chess[ax][ay] == 0);
-    const bool emptyB = (m_chess[bx][by] == 0);
-    const int before = evaluateBoard();
-    if (emptyA) m_chess[ax][ay] = piece;
-    if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = piece;
-    const int after = evaluateBoard();
-    if (emptyA) m_chess[ax][ay] = 0;
-    if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = 0;
-    m_type = savedType;
-    return after - before;
+    const auto scoreOf = [piece](const ColorDelta& delta) {
+        return piece == 1 ? delta.black - delta.white : delta.white - delta.black;
+    };
+    if (piece != 1 && piece != 2) {
+        const int ax = a.x(), ay = a.y(), bx = b.x(), by = b.y();
+        const bool emptyA = onBoard(ax, ay) && m_chess[ax][ay] == 0;
+        const bool emptyB = onBoard(bx, by) && m_chess[bx][by] == 0;
+        const int before = boardScoreForPiece(m_chess, piece);
+        if (emptyA) m_chess[ax][ay] = piece;
+        if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = piece;
+        const int after = boardScoreForPiece(m_chess, piece);
+        if (emptyA) m_chess[ax][ay] = 0;
+        if (emptyB && !(ax == bx && ay == by)) m_chess[bx][by] = 0;
+        return after - before;
+    }
+    const bool emptyA = onBoard(a.x(), a.y()) && m_chess[a.x()][a.y()] == 0;
+    const bool emptyB = onBoard(b.x(), b.y()) && m_chess[b.x()][b.y()] == 0;
+    if (!emptyA && !emptyB) return 0;
+    if (a == b) {
+        int total = 0;
+        for (int d = 0; d < 4; ++d) {
+            int sx, sy;
+            lineStart(a.x(), a.y(), d, sx, sy);
+            total += scoreOf(lineDeltaForPlacing(m_chess, a.x(), a.y(),
+                                                 kDirections[d][0], kDirections[d][1], piece));
+        }
+        return total;
+    }
+    struct LineRef {
+        int d;
+        int sx;
+        int sy;
+        int mask;
+    };
+    LineRef lines[8];
+    int lineCount = 0;
+    const auto addPoint = [&](QPoint p, int bit) {
+        for (int d = 0; d < 4; ++d) {
+            int sx, sy;
+            lineStart(p.x(), p.y(), d, sx, sy);
+            int i = 0;
+            for (; i < lineCount; ++i)
+                if (lines[i].d == d && lines[i].sx == sx && lines[i].sy == sy) {
+                    lines[i].mask |= bit;
+                    break;
+                }
+            if (i == lineCount) {
+                lines[lineCount].d = d;
+                lines[lineCount].sx = sx;
+                lines[lineCount].sy = sy;
+                lines[lineCount].mask = bit;
+                ++lineCount;
+            }
+        }
+    };
+    if (emptyA) addPoint(a, 1);
+    if (emptyB) addPoint(b, 2);
+    int total = 0;
+    for (int i = 0; i < lineCount; ++i) {
+        const int dx = kDirections[lines[i].d][0];
+        const int dy = kDirections[lines[i].d][1];
+        if (lines[i].mask == 3) {
+            int black = 0, white = 0;
+            lineScorePair(m_chess, lines[i].sx, lines[i].sy, dx, dy, black, white);
+            const int before = piece == 1 ? black - white : white - black;
+            m_chess[a.x()][a.y()] = piece;
+            m_chess[b.x()][b.y()] = piece;
+            lineScorePair(m_chess, lines[i].sx, lines[i].sy, dx, dy, black, white);
+            const int after = piece == 1 ? black - white : white - black;
+            m_chess[a.x()][a.y()] = 0;
+            m_chess[b.x()][b.y()] = 0;
+            total += after - before;
+        } else {
+            const QPoint p = lines[i].mask == 1 ? a : b;
+            total += scoreOf(lineDeltaForPlacing(m_chess, p.x(), p.y(), dx, dy, piece));
+        }
+    }
+    return total;
 }
+
+void Game::placeStone(int x, int y, int color)
+{
+    if (m_chess[x][y] != 0) clearStone(x, y);
+    m_chess[x][y] = 0;
+    for (int d = 0; d < 4; ++d) {
+        int sx, sy;
+        lineStart(x, y, d, sx, sy);
+        const ColorDelta delta = lineDeltaForPlacing(m_chess, x, y,
+                                                     kDirections[d][0], kDirections[d][1], color);
+        const int id = lineId(d, sx, sy);
+        m_lineScore[0][id] += delta.black;
+        m_lineScore[1][id] += delta.white;
+    }
+    m_chess[x][y] = color;
+}
+
+void Game::clearStone(int x, int y)
+{
+    const int color = m_chess[x][y];
+    if (color == 0) return;
+    m_chess[x][y] = 0;
+    for (int d = 0; d < 4; ++d) {
+        int sx, sy;
+        lineStart(x, y, d, sx, sy);
+        const ColorDelta delta = lineDeltaForPlacing(m_chess, x, y,
+                                                     kDirections[d][0], kDirections[d][1], color);
+        const int id = lineId(d, sx, sy);
+        m_lineScore[0][id] -= delta.black;
+        m_lineScore[1][id] -= delta.white;
+    }
+}
+
+void Game::recomputeLineScores()
+{
+    for (int c = 0; c < 2; ++c)
+        for (int i = 0; i < 112; ++i)
+            m_lineScore[c][i] = 0;
+    const auto add = [&](int d, int sx, int sy) {
+        int black = 0, white = 0;
+        lineScorePair(m_chess, sx, sy, kDirections[d][0], kDirections[d][1], black, white);
+        const int id = lineId(d, sx, sy);
+        m_lineScore[0][id] = black;
+        m_lineScore[1][id] = white;
+    };
+    for (int x = 0; x < 19; ++x) add(0, x, 0);
+    for (int y = 0; y < 19; ++y) add(1, 0, y);
+    for (int y = 0; y < 19; ++y) add(2, 0, y);
+    for (int x = 1; x < 19; ++x) add(2, x, 0);
+    for (int y = 0; y < 19; ++y) add(3, 0, y);
+    for (int x = 1; x < 19; ++x) add(3, x, 18);
+}
+
 
 bool Game::hasSix(int x, int y, int piece)
 {
@@ -716,6 +965,7 @@ void Game::rebuildSearch()
                         near = true;
             if (near) m_search.push_back({x, y});
         }
+    recomputeLineScores();
 }
 
 int Game::tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaining,
@@ -979,8 +1229,8 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
         if (m_chess[a.x()][a.y()] != 0 || m_chess[b.x()][b.y()] != 0) continue;
 
         QPoint savedLast = m_last, savedLLast = m_llast;
-        m_chess[a.x()][a.y()] = pieceType;
-        m_chess[b.x()][b.y()] = pieceType;
+        placeStone(a.x(), a.y(), pieceType);
+        placeStone(b.x(), b.y(), pieceType);
         m_last = a; m_llast = b;
 
         int score;
@@ -995,8 +1245,8 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
                              depth == 0 ? qply + 1 : 0, childHash);
         }
 
-        m_chess[a.x()][a.y()] = 0;
-        m_chess[b.x()][b.y()] = 0;
+        clearStone(a.x(), a.y());
+        clearStone(b.x(), b.y());
         m_last = savedLast; m_llast = savedLLast;
         if (depth > 1)
             m_search = savedSearch;
@@ -1101,8 +1351,8 @@ void Game::bestPlay(int stonesRemaining)
             bool refutedCandidate = false;
             bool complete = true;
             m_type = myPiece;
-            m_chess[a.x()][a.y()] = myPiece;
-            m_chess[b.x()][b.y()] = myPiece;
+            placeStone(a.x(), a.y(), myPiece);
+            placeStone(b.x(), b.y(), myPiece);
             m_last = a; m_llast = b;
 
             if (!hasSix(a.x(), a.y(), myPiece) && !hasSix(b.x(), b.y(), myPiece)) {
@@ -1147,8 +1397,8 @@ void Game::bestPlay(int stonesRemaining)
                         }
                         const QPoint c = legalReplies[i], d = legalReplies[j];
                         ++exactReplies;
-                        m_chess[c.x()][c.y()] = oppPiece;
-                        m_chess[d.x()][d.y()] = oppPiece;
+                        placeStone(c.x(), c.y(), oppPiece);
+                        placeStone(d.x(), d.y(), oppPiece);
                         bool fatal = hasSix(c.x(), c.y(), oppPiece) || hasSix(d.x(), d.y(), oppPiece);
                         if (!fatal) {
                             std::vector<int> affected = base;
@@ -1199,8 +1449,8 @@ void Game::bestPlay(int stonesRemaining)
                                 fatal = !coverable;
                             }
                         }
-                        m_chess[c.x()][c.y()] = 0;
-                        m_chess[d.x()][d.y()] = 0;
+                        clearStone(c.x(), c.y());
+                        clearStone(d.x(), d.y());
                         if (!complete || timedOut() || m_timer.elapsed() >= exactDeadline) {
                             complete = false;
                             break;
@@ -1212,8 +1462,8 @@ void Game::bestPlay(int stonesRemaining)
                     }
                 }
             }
-            m_chess[a.x()][a.y()] = 0;
-            m_chess[b.x()][b.y()] = 0;
+            clearStone(a.x(), a.y());
+            clearStone(b.x(), b.y());
             m_last = exactLast; m_llast = exactLLast;
             m_search = exactSearch;
             m_type = exactType;
@@ -1253,8 +1503,8 @@ void Game::bestPlay(int stonesRemaining)
         if (timedOut() || m_timer.elapsed() >= probeDeadline) return -2;
         ++probeCount;
         const QPoint a = mv.step1(), b = mv.step2();
-        m_chess[a.x()][a.y()] = myPiece;
-        m_chess[b.x()][b.y()] = myPiece;
+        placeStone(a.x(), a.y(), myPiece);
+        placeStone(b.x(), b.y(), myPiece);
         int result = 0;
         Move witness;
         if (!hasSix(a.x(), a.y(), myPiece) && !hasSix(b.x(), b.y(), myPiece)) {
@@ -1271,14 +1521,14 @@ void Game::bestPlay(int stonesRemaining)
                     const QPoint c = reply.step1(), d = reply.step2();
                     if (c == d || m_chess[c.x()][c.y()] || m_chess[d.x()][d.y()]) return 0;
                     ++replyCount;
-                    m_chess[c.x()][c.y()] = oppPiece;
-                    m_chess[d.x()][d.y()] = oppPiece;
+                    placeStone(c.x(), c.y(), oppPiece);
+                    placeStone(d.x(), d.y(), oppPiece);
                     int response = tacticalMoves(myPiece, status, 2, false, probeDeadline);
                     // Own immediate win has precedence inside tacticalMoves.
                     bool fatal = response == -1 || hasSix(c.x(), c.y(), oppPiece)
                                  || hasSix(d.x(), d.y(), oppPiece);
-                    m_chess[c.x()][c.y()] = 0;
-                    m_chess[d.x()][d.y()] = 0;
+                    clearStone(c.x(), c.y());
+                    clearStone(d.x(), d.y());
                     if (response == -2 || timedOut() || m_timer.elapsed() >= probeDeadline)
                         return -2;
                     return fatal ? -1 : 0;
@@ -1306,8 +1556,8 @@ void Game::bestPlay(int stonesRemaining)
                 }
             }
         }
-        m_chess[a.x()][a.y()] = 0;
-        m_chess[b.x()][b.y()] = 0;
+        clearStone(a.x(), a.y());
+        clearStone(b.x(), b.y());
         if (result == -1) {
             if (!std::any_of(witnesses.begin(), witnesses.end(), [&](const Move& reply) {
                     return (reply.step1() == witness.step1() && reply.step2() == witness.step2())
@@ -1425,8 +1675,8 @@ void Game::bestPlay(int stonesRemaining)
             if (m_chess[a.x()][a.y()] != 0 || m_chess[b.x()][b.y()] != 0) continue;
 
             QPoint savedLast = m_last, savedLLast = m_llast;
-            m_chess[a.x()][a.y()] = myPiece;
-            if (stonesRemaining == 2) m_chess[b.x()][b.y()] = myPiece;
+            placeStone(a.x(), a.y(), myPiece);
+            if (stonesRemaining == 2) placeStone(b.x(), b.y(), myPiece);
             m_last = a; m_llast = b;
 
             int score;
@@ -1441,8 +1691,8 @@ void Game::bestPlay(int stonesRemaining)
                 score = -negamax(depth - 1, -INF, -iterBestScore, oppPiece, 0, childHash);
             }
 
-            m_chess[a.x()][a.y()] = 0;
-            if (stonesRemaining == 2) m_chess[b.x()][b.y()] = 0;
+            clearStone(a.x(), a.y());
+            if (stonesRemaining == 2) clearStone(b.x(), b.y());
             m_last = savedLast; m_llast = savedLLast;
             m_search = savedSearch;
 
