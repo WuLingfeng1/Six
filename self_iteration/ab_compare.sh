@@ -2,10 +2,13 @@
 # A/B 对比：当前工作区版本 vs git 历史某个 commit 的版本
 #
 # 从 git 历史提取旧版 Game.cpp/Game.h/Move.cpp/Move.h 并构建 worker，
-# 与当前源码构建的新版 worker 对打，输出 net（新版相对旧版的净胜局）。
+# 与当前工作区源码（可加 --new-params 补丁）构建的 worker 对打，
+# 输出 net（新版相对旧版的净胜局）。
 #
 # 用法：
 #   ./ab_compare.sh --old-commit HEAD~1 --games 8 --plies 30 --seed-base 1
+#   ./ab_compare.sh --old-commit HEAD --new-params "innerPairsDeep=20 innerPairsShallow=12"
+#   ./ab_compare.sh --old-commit HEAD --new-params "innerPairsDeep=20" --build-only
 set -u
 
 ROOT="/wlf/Six/程序原版压缩包/six"
@@ -17,6 +20,8 @@ GAMES=8
 PLIES=30
 OPENING_SET=4
 SEED_BASE=1
+NEW_PARAMS=""
+BUILD_ONLY=0
 
 while (($#)); do
     case "$1" in
@@ -26,6 +31,8 @@ while (($#)); do
         --opening-set) OPENING_SET="$2"; shift 2 ;;
         --seed-base) SEED_BASE="$2"; shift 2 ;;
         --out-root) OUT_ROOT="$2"; shift 2 ;;
+        --new-params) NEW_PARAMS="$2"; shift 2 ;;
+        --build-only) BUILD_ONLY=1; shift ;;
         *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
 done
@@ -61,13 +68,42 @@ if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$OLD_BUILD/Ma
     exit 2
 fi
 
-# 3. 用当前工作区源码构建新版 worker
+# 3. 复制当前工作区源码，可选补丁 SearchConfig 默认值，再构建新版 worker。
+#    每个 --out-root 有独立的 new-src/new-build，可并发跑不同候选。
+NEW_SRC="$OUT_ROOT/new-src"
 NEW_BUILD="$OUT_ROOT/new-build"
-rm -rf "$NEW_BUILD"
-mkdir -p "$NEW_BUILD"
-if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$NEW_BUILD/Makefile" CONFIG+=release CONFIG-=debug >/dev/null || ! make -C "$NEW_BUILD" -j4 >/dev/null; then
+rm -rf "$NEW_SRC" "$NEW_BUILD"
+mkdir -p "$NEW_SRC" "$NEW_BUILD"
+for f in Game.cpp Game.h Move.cpp Move.h; do
+    cp "$ROOT/$f" "$NEW_SRC/$f"
+done
+if [[ -n "$NEW_PARAMS" ]]; then
+    for kv in $NEW_PARAMS; do
+        key="${kv%%=*}"
+        val="${kv#*=}"
+        if [[ -z "$key" || -z "$val" || "$key" == "$val" ]]; then
+            printf 'invalid --new-params item: %s\n' "$kv" >&2
+            exit 2
+        fi
+        if ! SK="$key" SV="$val" perl -0pi -e '
+            my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
+            my $n = s/(\b$k\s*=\s*)\d+/$1$v/;
+            END { exit 1 unless $n == 1; }
+        ' "$NEW_SRC/Game.h"; then
+            printf 'failed to apply new param: %s\n' "$kv" >&2
+            exit 2
+        fi
+    done
+fi
+if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$NEW_BUILD/Makefile" "GAME_DIR=$NEW_SRC" CONFIG+=release CONFIG-=debug >/dev/null || ! make -C "$NEW_BUILD" -j4 >/dev/null; then
     printf 'new worker build failed\n' >&2
     exit 2
+fi
+
+if (( BUILD_ONLY )); then
+    printf 'old worker: %s\nnew worker: %s\nmatch_runner: %s\n' \
+        "$OLD_BUILD/self_iteration" "$NEW_BUILD/self_iteration" "$MATCH_BUILD/match_runner"
+    exit 0
 fi
 
 # 4. 对打（旧版=black-worker=baseline，新版=white-worker=candidate）
@@ -84,16 +120,17 @@ if ! QT_QPA_PLATFORM=offscreen "$MATCH_BUILD/match_runner" \
 fi
 
 # 5. 解析结果
-python3 - "$MATCH_DIR/match.csv" "$OLD_COMMIT" "$GAMES" << 'PYRANK'
+python3 - "$MATCH_DIR/match.csv" "$OLD_COMMIT" "$GAMES" "$NEW_PARAMS" << 'PYRANK'
 import csv, sys
-csv_path, old_commit, games = sys.argv[1], sys.argv[2], int(sys.argv[3])
+csv_path, old_commit, games, new_params = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
 rows = list(csv.DictReader(open(csv_path)))
 def count(sc, w): return sum(1 for r in rows if r["scenario"] == sc and r["winner"] == str(w))
 def n(sc): return sum(1 for r in rows if r["scenario"] == sc)
 cb, cw = count("control", 1), count("control", 2)
 b, w = count("candidate-black", 1), count("candidate-white", 2)
 net = (b - cb) + (w - cw)
-print("=== A/B 对比（旧版 %s 为 baseline，当前版为候选）===" % old_commit)
+print("=== A/B 对比（旧版 %s 为 baseline，当前版为候选%s）===" %
+      (old_commit, ("，参数: " + new_params) if new_params else ""))
 print("control（旧版自对）: 黑胜 %d / 白胜 %d / 未完成 %d" % (cb, cw, n("control") - cb - cw))
 print("当前版做黑 vs 旧版做白: 黑胜 %d" % b)
 print("当前版做白 vs 旧版做黑: 白胜 %d" % w)
