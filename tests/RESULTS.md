@@ -1,5 +1,67 @@
 # Completed Verification
 
+## Evaluation Hot-Path Revision (2026-10-20)
+
+Scope: production `Game.cpp` / `Game.h` and `tests/offline_tests.cpp`. The board
+evaluation was rewritten as a per-line sum maintained by exact local deltas:
+112 maximal lines, each line's black/white shape sums cached; `evaluateBoard()`
+reads the cache, `evaluatePair()`/`evaluatePoint()` apply O(1) local deltas for
+the affected lines and use a full-line before/after only when both points are
+collinear. `lineShape()`, all weights, tactical logic, TT and search control are
+unchanged; at fixed depth the chosen moves are bit-identical.
+
+Measured on the Release build (`-O2`, Qt 6.11.1, linux-clang, 16 cores), worker
+search on the fixed J10 / I10 / K12 board, 60s cap so no timeouts:
+
+| Fixed depth | Old (HEAD `ee1e1d9`) | New (`8aaa09d`) | Speedup |
+| ---: | ---: | ---: | ---: |
+| 4 | 649 ms (3 runs 627/669/651) | 286 ms (279/287/293) | 2.27x |
+| 5 | 6384 ms | 2701 ms | 2.36x |
+| 6 | 48635 ms | 19532 ms | 2.49x |
+
+At the production 2000 ms budget, the four history fixtures moved from completed
+depth `3/3/1/3` to `4/4/1/4`; moves and legality were unchanged where depth was
+unchanged, and the deeper positions chose the same first stone. The new run
+reported `illegal_count: 0`, `critical_failed: false` for both critical
+regressions.
+
+End-to-end fixed-depth equivalence: old HEAD versus the new source, both run
+with `--games 4 --plies 4 --opening-set 4 --max-depth 4 --time-limit 60000`, and
+all four self-play move sequences plus all four fixture moves were identical.
+
+Strength A/B (20 games/scenario, randomized, seed-base 1): the new engine's net
+was 0 (9 of 40 transcript comparisons diverged, no outcome changed). A narrower
+width candidate `innerPairsDeep=20 innerPairsShallow=12 innerPoints=16` scored
+net +1 at seed 1 and 0 at seed 101, so the pre-registered two-seed gate was not
+met and the default width was kept. Full tables are in
+`self_iteration/进展总结.md` §11.
+
+Test run (out-of-source, `QT_QPA_PLATFORM=offscreen`):
+
+```text
+Totals: 39 passed, 0 failed, 0 skipped, 0 blacklisted, 53348ms
+```
+
+`incrementalScoreConsistency` was added: 12 seeded random boards, every empty
+point for `evaluatePoint`, 120 seeded pairs plus edge/corner/same-point pairs
+per board, `set/add/retract/gameundo`, a real Anqing `bestPlay()` and a timed
+`negamax(6, ...)`, all compared value-for-value with the test-local independent
+`fullScore`. The existing `pairDeltaAndAntisymmetry`, white15, Anqing and prefix31
+audits passed unchanged. `productionGuiSmoke` used the freshly built
+`/tmp/opencode/six-gui-release/six`.
+
+Source hashes for this run:
+
+```text
+57280615b4b9adc6234ee08259ebea6f8a42d45b0513accbe76508cb5cfe9523  Game.cpp
+e3206c1fcb84796ee0dfd7b5c8d7b5094cde0ed20a761cc7c809c4dd5bd5f803  Game.h
+a437f97e4099ee340be96e16b13ffa70b6b4cdbf0c39329bafd175e76bb89831  Move.cpp
+4e44a3af35e1e2f3a21238ee3d4b8a106a476a59da819c09b981de604f94ac6c  tests/offline_tests.cpp
+989de15fc321db86024f24b5d2680a5569db23d2bc3225a39d5b9c4707c24312  tests/offline_tests.pro
+```
+
+The trusted audit sections below predate this revision and are kept for history.
+
 ## Trusted Audit Run (2026-10-18)
 
 Scope was restricted to `tests/`. Production, self-iteration, client, server,

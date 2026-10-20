@@ -19,6 +19,7 @@ in the test translation unit to check restoration.
 | `white15Oracle` | Exact record prefix and independent known losing `E9 G18 + F11 F13` versus coverable `E9 F14 + F11 F13` |
 | `white15Search` | Real offline `bestPlay()`, 2000ms budget, legal white pair and actual black/step-0 handoff; reject known losing pairs; all 45,451 legal black pairs independently checked |
 | `pairDeltaAndAntisymmetry` | Full six-window recomputation versus pair delta, reversed order, same point, occupied points, four directions, edges, evaluation antisymmetry, no state mutation |
+| `incrementalScoreConsistency` | Seeded random boards: `evaluateBoard`/`evaluatePoint` for every empty point and seeded pairs versus independent `fullScore`; `set/add/retract/gameundo`; real Anqing `bestPlay`; timed `negamax`; cache does not mutate board/search/turn state |
 | `timeoutRestoration` | Real depth-6 search times out at 2000ms; board, ordered search list, type, step and last/previous points restored |
 | `undoRebuild` | Undo removes remote stone and stale proximity points; expected radius-two square independently constructed; empty board rebuild empty |
 | `windowReplacementAndReconnect` | Complete MainWindow shown; two new-game actions delete old Game (QPointer), expose fresh getGame(), reconnect Options `type` and `open_type`, single opening event, undo and replay forwarding, repaint path exercised |
