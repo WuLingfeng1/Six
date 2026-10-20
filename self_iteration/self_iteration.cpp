@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -56,6 +57,9 @@ void applySearchConfig(const QStringList &a) {
         if (i >= 0 && i + 1 < a.size()) { bool ok = false; const double v = a[i + 1].toDouble(&ok); if (ok) Game::searchConfig.randomTemp = v; }
     }
     if (a.contains("--tt-off")) Game::searchConfig.ttEnabled = false;
+    if (a.contains("--threat-extend")) Game::searchConfig.threatExtension = true;
+    readInt("--threat-max", Game::searchConfig.threatExtendMax);
+    readInt("--threat-budget", Game::searchConfig.threatExtendBudget);
     if (Game::searchConfig.randomSeed != 0)
         Game::seedRandom(static_cast<unsigned>(Game::searchConfig.randomSeed));
 }
@@ -349,11 +353,132 @@ int runWorker(const QStringList &arguments) {
     }
     return 0;
 }
+
+QJsonObject runTactics(const QStringList &arguments) {
+    const QString fixtureRoot = option(arguments, "--fixture-root", "/wlf/Six/程序原版压缩包/six");
+    const QString suitePath = option(arguments, "--suite", QDir(fixtureRoot).filePath("self_iteration/tactics/suite.json"));
+    const QString out = option(arguments, "--out", "");
+    const int oracleMs = option(arguments, "--oracle-ms", "1000").toInt();
+    if (suitePath.isEmpty() || out.isEmpty() || oracleMs < 1) {
+        QTextStream(stderr) << "tactics requires --suite and --out\n";
+        return {};
+    }
+    QFile suiteFile(suitePath);
+    if (!suiteFile.open(QIODevice::ReadOnly)) {
+        QTextStream(stderr) << "cannot open suite: " << suitePath << '\n';
+        return {};
+    }
+    const QJsonArray positions = QJsonDocument::fromJson(suiteFile.readAll()).object()["positions"].toArray();
+    QDir().mkpath(out);
+    QJsonArray results;
+    int pass = 0, fail = 0, unknown = 0, lost = 0, control = 0, invalid = 0;
+    for (const QJsonValue &value : positions) {
+        const QJsonObject item = value.toObject();
+        const QString id = item["id"].toString();
+        const QString file = item["file"].toString();
+        const int stones = item["stones"].toInt(-1);
+        const int color = item["color"].toInt(0);
+        const QString expected = item["expected"].toString();
+        const QString path = QFileInfo(file).isAbsolute() ? file : QDir(fixtureRoot).filePath(file);
+        Referee before;
+        QJsonObject entry{{"id", id}, {"file", file}, {"stones", stones},
+                          {"color", color == 1 ? "B" : "W"}, {"expected", expected}, {"source", path}};
+        if (stones < 1 || (color != 1 && color != 2) || !loadPrefix(path, stones, before)) {
+            entry["status"] = "invalid_fixture";
+            entry["result"] = "invalid";
+            ++invalid;
+            results.append(entry);
+            continue;
+        }
+        if (before.winner) {
+            entry["status"] = "terminal";
+            entry["result"] = "invalid";
+            ++invalid;
+            results.append(entry);
+            continue;
+        }
+        const bool unavoidable = !before.completions(3 - color).empty()
+                                 && !Referee::coverable(before.completions(3 - color));
+        Game game;
+        for (int x = 0; x < 19; ++x)
+            for (int y = 0; y < 19; ++y)
+                game.m_chess[x][y] = before.board[x][y];
+        game.m_type = color;
+        game.m_step = 0;
+        game.rebuildSearch();
+        std::vector<QPoint> move;
+        QObject::connect(&game, &Game::chessChange, [&](QPoint p, int c) {
+            if (c == color) move.push_back(p);
+        });
+        QElapsedTimer timer;
+        timer.start();
+        completedDepth = -1;
+        game.bestPlay();
+        const qint64 elapsed = timer.elapsed();
+        const int chosenScore = game.m_chosenMove.score();
+        const bool declaredLoss = chosenScore <= -100000000;
+        int illegal = 0;
+        const QString moveStatus = status(before, color, move, illegal, oracleMs);
+        QString result;
+        if (expected == "unavoidable") {
+            ++control;
+            result = unavoidable ? "control" : "invalid_expectation";
+            if (!unavoidable) ++invalid;
+        } else if (illegal) {
+            ++fail;
+            result = "fail";
+        } else if (moveStatus == "unknown") {
+            ++unknown;
+            result = "unknown";
+        } else if (declaredLoss && expected != "direct_win") {
+            ++lost;
+            result = "lost";
+        } else if (expected == "direct_win") {
+            const bool ok = moveStatus == "direct_win";
+            if (ok) ++pass; else ++fail;
+            result = ok ? "pass" : "fail";
+        } else {
+            const bool ok = moveStatus == "direct_win" || moveStatus == "safe_one_reply";
+            if (ok) ++pass; else ++fail;
+            result = ok ? "pass" : "fail";
+        }
+        entry["move"] = points(move);
+        entry["status"] = moveStatus;
+        entry["illegal"] = illegal;
+        entry["unavoidable"] = unavoidable;
+        entry["elapsed_ms"] = double(elapsed);
+        entry["completed_depth"] = completedDepth;
+        entry["score"] = chosenScore;
+        entry["declared_loss"] = declaredLoss;
+        entry["result"] = result;
+        results.append(entry);
+    }
+    QJsonObject root{{"mode", "tactics"}, {"suite", suitePath},
+                     {"time_limit_ms", double(Game::searchConfig.timeLimitMs)}, {"oracle_ms", oracleMs},
+                     {"pass", pass}, {"fail", fail}, {"unknown", unknown}, {"lost", lost},
+                     {"control", control}, {"invalid", invalid}, {"positions", results}};
+    if (!write(QDir(out).filePath("tactics.json"), QJsonDocument(root).toJson(QJsonDocument::Indented))) return {};
+    QByteArray csv = "id,expected,status,result,move,completed_depth,elapsed_ms,score,declared_loss\n";
+    for (const QJsonValue &value : results) {
+        const QJsonObject o = value.toObject();
+        csv += o["id"].toString().toUtf8() + "," + o["expected"].toString().toUtf8() + ","
+             + o["status"].toString().toUtf8() + "," + o["result"].toString().toUtf8() + ","
+             + QJsonDocument(o["move"].toArray()).toJson(QJsonDocument::Compact) + ","
+             + QByteArray::number(o["completed_depth"].toInt()) + ","
+             + QByteArray::number(o["elapsed_ms"].toDouble()) + ","
+             + QByteArray::number(o["score"].toInt()) + ","
+             + (o["declared_loss"].toBool() ? "1" : "0") + "\n";
+    }
+    write(QDir(out).filePath("tactics.csv"), csv);
+    QTextStream(stdout) << QJsonDocument(root).toJson(QJsonDocument::Compact) << '\n';
+    return root;
+}
 }
 
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen"); QApplication app(argc, argv); QTimer dialogCloser; closeResultDialogs(dialogCloser); qInstallMessageHandler(captureDepth); const QStringList a = args();
     applySearchConfig(a);
+    if (option(a, "--mode", "") == "tactics") { const QJsonObject t = runTactics(a); return t.isEmpty() ? 3 : 0; }
     if (option(a, "--mode", "") == "worker") return runWorker(a);
     if (option(a, "--mode", "") != "baseline") { QTextStream(stderr) << "only --mode baseline is supported\n"; return 2; }
     const int games = option(a, "--games", "2").toInt(), plies = option(a, "--plies", "30").toInt(), openingSet = option(a, "--opening-set", "0").toInt(); const QString out = option(a, "--out", "");

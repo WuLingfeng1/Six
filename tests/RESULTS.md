@@ -1,5 +1,50 @@
 # Completed Verification
 
+## Threat-Extension Revision (2026-10-20)
+
+Scope: `Game.cpp` / `Game.h` add an opt-in threat extension (enabled by default
+at `threatExtendMax=2`, `threatExtendBudget=64`), `self_iteration` gains
+`--mode tactics` plus `--threat-extend`/`--threat-max`/`--threat-budget`, and
+`ab_compare.sh` gains `--old-params` and boolean parameter patches.
+
+A forced move that creates a four/five window (`own>=4, holes<=2, enemy==0`)
+does not decrement depth; the line continues along the opponent's forced covers.
+The extension is capped per path and per `bestPlay`, and disables the TT while
+active. Fixed-depth cost on J10/I10/K12: depth 4 319→343 ms, depth 5
+2741→2735 ms, depth 6 19532→20262 ms, same moves.
+
+The new independent tactics suite (`self_iteration/tactics/suite.json`, 45
+positions: 19 safe, 19 direct-win, 7 unavoidable) reports `28 pass, 0 fail,
+10 lost, 7 control`; with the enabled 2/64 extension it is **identical to the
+pre-extension engine on all 45 positions** (0 move/status/depth differences).
+The pre-P1 and P1 engines were also identical on this suite.
+
+Strength A/B (20 games/scenario, randomized; baseline = same source with
+`threatExtension=false`): seed-base 1 **net +3** (candidate-black +2,
+candidate-white +1), seed-base 101 **net +1** (candidate-black +1,
+candidate-white 0). Both seeds are positive but the effect is small; larger
+samples are still required.
+
+Test run (Release, out-of-source, `QT_QPA_PLATFORM=offscreen`):
+
+```text
+Totals: 39 passed, 0 failed, 0 skipped, 0 blacklisted, 54827ms
+```
+
+Source hashes for this run:
+
+```text
+8eadc9db519adfde8c2d164fac81118d652a48601aa2a520f9b0e9fbaca4742f  Game.cpp
+bce725e89a680e50df63f82740a0536678260275ebeebc0adf2e5fe0b5085852  Game.h
+a437f97e4099ee340be96e16b13ffa70b6b4cdbf0c39329bafd175e76bb89831  Move.cpp
+4e44a3af35e1e2f3a21238ee3d4b8a106a476a59da819c09b981de604f94ac6c  tests/offline_tests.cpp
+c7508a539115a1706260c79132f96674782509179024fc026ea4f306d0d0764a  self_iteration/self_iteration.cpp
+94f05f74a4caffcc49f2d9d585e179c5309a041b0f653b3c6c8a5e1d4ca1eb8c  self_iteration/ab_compare.sh
+edca3fd914c834e6b0fbf0a482f78924f98984e9bf16173c20db2ba5b184cb5b  self_iteration/tactics/suite.json
+```
+
+The sections below predate this revision and are kept for history.
+
 ## Evaluation Hot-Path Revision (2026-10-20)
 
 Scope: production `Game.cpp` / `Game.h` and `tests/offline_tests.cpp`. The board

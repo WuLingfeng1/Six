@@ -950,6 +950,32 @@ bool Game::hasSix(int x, int y, int piece)
     return false;
 }
 
+bool Game::createsThreat(QPoint a, QPoint b, int piece) const
+{
+    const QPoint points[2] = {a, b};
+    for (const QPoint& p : points) {
+        for (int d = 0; d < 4; ++d) {
+            const int dx = kDirections[d][0], dy = kDirections[d][1];
+            for (int offset = -5; offset <= 0; ++offset) {
+                const int sx = p.x() + offset * dx;
+                const int sy = p.y() + offset * dy;
+                int own = 0, enemy = 0, holes = 0;
+                bool valid = true;
+                for (int k = 0; k < 6; ++k) {
+                    const int x = sx + k * dx, y = sy + k * dy;
+                    if (!onBoard(x, y)) { valid = false; break; }
+                    const int c = m_chess[x][y];
+                    if (c == 0) ++holes;
+                    else if (c == piece) ++own;
+                    else ++enemy;
+                }
+                if (valid && enemy == 0 && own >= 4 && holes <= 2) return true;
+            }
+        }
+    }
+    return false;
+}
+
 void Game::rebuildSearch()
 {
     m_search.reserve(361);
@@ -1168,7 +1194,8 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
 {
     if (timedOut()) return 0;
 
-    if (depth > 0 && searchConfig.ttEnabled) {
+    const bool useTt = searchConfig.ttEnabled && !searchConfig.threatExtension;
+    if (depth > 0 && useTt) {
         TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
         if (te.key == hash && te.depth >= depth) {
             if (te.flag == 1) return te.score;
@@ -1241,8 +1268,19 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
                 rebuildSearch();
             const quint64 childHash = hash ^ z.table[a.x()][a.y()][pieceType]
                                       ^ z.table[b.x()][b.y()][pieceType] ^ z.side;
-            score = -negamax(std::max(0, depth - 1), -beta, -alpha, oppType,
+            int childDepth = std::max(0, depth - 1);
+            bool extended = false;
+            if (depth > 0 && searchConfig.threatExtension && m_threatBudget > 0
+                && m_extensions < searchConfig.threatExtendMax
+                && createsThreat(a, b, pieceType)) {
+                ++childDepth;
+                ++m_extensions;
+                --m_threatBudget;
+                extended = true;
+            }
+            score = -negamax(childDepth, -beta, -alpha, oppType,
                              depth == 0 ? qply + 1 : 0, childHash);
+            if (extended) --m_extensions;
         }
 
         clearStone(a.x(), a.y());
@@ -1260,7 +1298,7 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
     m_type = savedType;
     // Selective continuations are scores, not complete mate proofs.
     const int result = m_timedOut ? 0 : std::clamp(best, -WIN_SCORE + 1, WIN_SCORE - 1);
-    if (depth > 0 && searchConfig.ttEnabled && !m_timedOut && result > -WIN_SCORE + 1 && result < WIN_SCORE - 1) {
+    if (depth > 0 && useTt && !m_timedOut && result > -WIN_SCORE + 1 && result < WIN_SCORE - 1) {
         TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
         if (te.key != hash || te.depth <= depth) {
             te.key = hash;
@@ -1285,6 +1323,8 @@ void Game::bestPlay(int stonesRemaining)
     m_timeLimitMs = searchConfig.timeLimitMs;
     m_timedOut = false;
     m_qNodes = 0;
+    m_threatBudget = searchConfig.threatExtendBudget;
+    m_extensions = 0;
 
     int savedType = m_type;
     m_type = myPiece;
@@ -1688,8 +1728,18 @@ void Game::bestPlay(int stonesRemaining)
                 quint64 childHash = rootHash ^ z.table[a.x()][a.y()][myPiece];
                 if (stonesRemaining == 2) childHash ^= z.table[b.x()][b.y()][myPiece];
                 childHash ^= z.side;
-                score = -negamax(depth - 1, -INF, -iterBestScore, oppPiece, 0, childHash);
-            }
+                int childDepth = depth - 1;
+                bool extended = false;
+                if (searchConfig.threatExtension && m_threatBudget > 0
+                    && m_extensions < searchConfig.threatExtendMax
+                    && createsThreat(a, b, myPiece)) {
+                    ++childDepth;
+                    ++m_extensions;
+                    --m_threatBudget;
+                    extended = true;
+                }
+                score = -negamax(childDepth, -INF, -iterBestScore, oppPiece, 0, childHash);
+                if (extended) --m_extensions;            }
 
             clearStone(a.x(), a.y());
             if (stonesRemaining == 2) clearStone(b.x(), b.y());

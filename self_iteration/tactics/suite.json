@@ -1,0 +1,365 @@
+{
+  "description": "独立一回复战术检查：expected=direct_win/safe_one_reply/unavoidable；不是整局胜率。",
+  "positions": [
+    {
+      "id": "C6-aaaBvsxxxW-后手胜-z-t53",
+      "file": "棋谱文件/C6-aaaBvsxxxW-后手胜-z.txt",
+      "stones": 103,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 53)"
+    },
+    {
+      "id": "C6-aaaBvsxxxW-后手胜-z-t65",
+      "file": "棋谱文件/C6-aaaBvsxxxW-后手胜-z.txt",
+      "stones": 127,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=direct_loss new=safe_one_reply (turn 65)"
+    },
+    {
+      "id": "C6-aaaBvsxxxW-后手胜-z-t66",
+      "file": "棋谱文件/C6-aaaBvsxxxW-后手胜-z.txt",
+      "stones": 129,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 66)"
+    },
+    {
+      "id": "C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中-t16",
+      "file": "棋谱文件/C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 29,
+      "color": 2,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 16)"
+    },
+    {
+      "id": "C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中-t18",
+      "file": "棋谱文件/C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 33,
+      "color": 2,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 18)"
+    },
+    {
+      "id": "C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中-t19",
+      "file": "棋谱文件/C6-东北秦皇岛分校Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 35,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 19)"
+    },
+    {
+      "id": "C6-北京信息科技大学Bvs重师W-后手胜-祁门一中-t38",
+      "file": "棋谱文件/C6-北京信息科技大学Bvs重师W-后手胜-祁门一中.txt",
+      "stones": 73,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 38)"
+    },
+    {
+      "id": "C6-吉林大学一队Bvs重师W-后手胜-祁门一中-t44",
+      "file": "棋谱文件/C6-吉林大学一队Bvs重师W-后手胜-祁门一中.txt",
+      "stones": 85,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 44)"
+    },
+    {
+      "id": "C6-吉林大学二队Bvs重师W-后手胜-祁门一中-t22",
+      "file": "棋谱文件/C6-吉林大学二队Bvs重师W-后手胜-祁门一中.txt",
+      "stones": 41,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 22)"
+    },
+    {
+      "id": "C6-大连交通大学Bvs重师W-后手胜-祁门一中-t24",
+      "file": "棋谱文件/C6-大连交通大学Bvs重师W-后手胜-祁门一中.txt",
+      "stones": 45,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 24)"
+    },
+    {
+      "id": "C6-安庆师范大学Bvs重师W-先手胜-祁门一中-t18",
+      "file": "棋谱文件/C6-安庆师范大学Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 33,
+      "color": 2,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 18)"
+    },
+    {
+      "id": "C6-安庆师范大学Bvs重师W-先手胜-祁门一中-t20",
+      "file": "棋谱文件/C6-安庆师范大学Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 37,
+      "color": 2,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 20)"
+    },
+    {
+      "id": "C6-安庆师范大学Bvs重师W-先手胜-祁门一中-t21",
+      "file": "棋谱文件/C6-安庆师范大学Bvs重师W-先手胜-祁门一中.txt",
+      "stones": 39,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 21)"
+    },
+    {
+      "id": "C6-安徽大学Bvs重师W-先手胜-f-t26",
+      "file": "棋谱文件/C6-安徽大学Bvs重师W-先手胜-f.txt",
+      "stones": 49,
+      "color": 2,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=safe_one_reply (turn 26)"
+    },
+    {
+      "id": "C6-安徽大学Bvs重师W-先手胜-f-t48",
+      "file": "棋谱文件/C6-安徽大学Bvs重师W-先手胜-f.txt",
+      "stones": 93,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 48)"
+    },
+    {
+      "id": "C6-安徽大学Bvs重师W-先手胜-fff-t26",
+      "file": "棋谱文件/C6-安徽大学Bvs重师W-先手胜-fff.txt",
+      "stones": 49,
+      "color": 2,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 26)"
+    },
+    {
+      "id": "C6-安徽大学Bvs重师W-先手胜-fff-t28",
+      "file": "棋谱文件/C6-安徽大学Bvs重师W-先手胜-fff.txt",
+      "stones": 53,
+      "color": 2,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 28)"
+    },
+    {
+      "id": "C6-安徽大学Bvs重师W-先手胜-fff-t29",
+      "file": "棋谱文件/C6-安徽大学Bvs重师W-先手胜-fff.txt",
+      "stones": 55,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 29)"
+    },
+    {
+      "id": "C6-沈阳建筑Bvs重师W-先手胜-zzz-t106",
+      "file": "棋谱文件/C6-沈阳建筑Bvs重师W-先手胜-zzz.txt",
+      "stones": 209,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 106)"
+    },
+    {
+      "id": "C6-重师BvsqW-先手胜-ZXZ-t11",
+      "file": "棋谱文件/C6-重师BvsqW-先手胜-ZXZ.txt",
+      "stones": 19,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 11)"
+    },
+    {
+      "id": "C6-重师BvsqqW-先手胜-zx-t37",
+      "file": "棋谱文件/C6-重师BvsqqW-先手胜-zx.txt",
+      "stones": 71,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 37)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t35",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 67,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 35)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t37",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 71,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 37)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t39",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 75,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 39)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t45",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 87,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 45)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t47",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 91,
+      "color": 1,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 47)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t48",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 93,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=safe_one_reply new=direct_win (turn 48)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t49",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 95,
+      "color": 1,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 49)"
+    },
+    {
+      "id": "C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中-t50",
+      "file": "棋谱文件/C6-重师Bvs东北大学秦皇岛分校W-后手胜-祁门一中.txt",
+      "stones": 97,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 50)"
+    },
+    {
+      "id": "C6-重师Bvs北京信息科技大学W-先手胜-祁门一中-t23",
+      "file": "棋谱文件/C6-重师Bvs北京信息科技大学W-先手胜-祁门一中.txt",
+      "stones": 43,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 23)"
+    },
+    {
+      "id": "C6-重师Bvs吉林大学一队W-后手胜-祁门一中-t19",
+      "file": "棋谱文件/C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt",
+      "stones": 35,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 19)"
+    },
+    {
+      "id": "C6-重师Bvs吉林大学一队W-后手胜-祁门一中-t21",
+      "file": "棋谱文件/C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt",
+      "stones": 39,
+      "color": 1,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 21)"
+    },
+    {
+      "id": "C6-重师Bvs吉林大学一队W-后手胜-祁门一中-t22",
+      "file": "棋谱文件/C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt",
+      "stones": 41,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 22)"
+    },
+    {
+      "id": "C6-重师Bvs吉林大学二队W-先手胜-祁门一中-t25",
+      "file": "棋谱文件/C6-重师Bvs吉林大学二队W-先手胜-祁门一中.txt",
+      "stones": 47,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 25)"
+    },
+    {
+      "id": "C6-重师Bvs大连交通大学W-先手胜-祁门一中-t25",
+      "file": "棋谱文件/C6-重师Bvs大连交通大学W-先手胜-祁门一中.txt",
+      "stones": 47,
+      "color": 1,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 25)"
+    },
+    {
+      "id": "C6-重师Bvs安庆师范大学W-后手胜-祁门一中-t13",
+      "file": "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+      "stones": 23,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "history: old=refuted new=refuted (turn 13)"
+    },
+    {
+      "id": "C6-重师Bvs安庆师范大学W-后手胜-祁门一中-t15",
+      "file": "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+      "stones": 27,
+      "color": 1,
+      "expected": "unavoidable",
+      "note": "history: old=direct_loss new=direct_loss (turn 15)"
+    },
+    {
+      "id": "C6-重师Bvs安庆师范大学W-后手胜-祁门一中-t16",
+      "file": "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+      "stones": 29,
+      "color": 2,
+      "expected": "direct_win",
+      "note": "history: old=direct_win new=direct_win (turn 16)"
+    },
+    {
+      "id": "baseline-C6-重师Bvs北京信息科技大学W-先手-8",
+      "file": "棋谱文件/C6-重师Bvs北京信息科技大学W-先手胜-祁门一中.txt",
+      "stones": 8,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "baseline fixture"
+    },
+    {
+      "id": "baseline-C6-北京信息科技大学Bvs重师W-后手-16",
+      "file": "棋谱文件/C6-北京信息科技大学Bvs重师W-后手胜-祁门一中.txt",
+      "stones": 16,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "baseline fixture"
+    },
+    {
+      "id": "baseline-C6-重师Bvs吉林大学一队W-后手胜--24",
+      "file": "棋谱文件/C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt",
+      "stones": 24,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "baseline fixture"
+    },
+    {
+      "id": "baseline-C6-重师Bvs安庆师范大学W-后手胜--12",
+      "file": "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+      "stones": 12,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "baseline fixture"
+    },
+    {
+      "id": "anqing-prefix15",
+      "file": "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt",
+      "stones": 15,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "exact-defense fixture"
+    },
+    {
+      "id": "white15-prefix57",
+      "file": "/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt",
+      "stones": 57,
+      "color": 2,
+      "expected": "safe_one_reply",
+      "note": "white15 exact-defense fixture"
+    },
+    {
+      "id": "turn17-prefix31",
+      "file": "/wlf/Six/程序原版压缩包/six/build/Desktop_Qt_6_11_1-Release/棋谱文件/C6-sixBvshumanW-先手胜-06.txt",
+      "stones": 31,
+      "color": 1,
+      "expected": "safe_one_reply",
+      "note": "turn17 prefix31 fixture"
+    }
+  ]
+}

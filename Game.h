@@ -44,6 +44,9 @@ public:
         double randomTemp = 2000.0;
         int randomSeed = 0;
         bool ttEnabled = true;
+        bool threatExtension = true;
+        int threatExtendMax = 2;
+        int threatExtendBudget = 64;
     };
     static SearchConfig searchConfig;
     static void seedRandom(unsigned seed);
@@ -67,6 +70,7 @@ public:
     int evaluatePoint(int x, int y, int piece);
     int evaluatePair(QPoint a, QPoint b, int piece);
     bool hasSix(int x, int y, int piece);
+    bool createsThreat(QPoint a, QPoint b, int piece) const;
     void rebuildSearch();
     // 1: immediate win, 2: required defenses, -1: undefendable, 0: quiet.
     // -2: interrupted/unknown. enumerate=false only checks existence of a cover.
@@ -118,6 +122,8 @@ private:
     qint64 m_timeLimitMs;
     bool m_timedOut;
     int m_qNodes = 0; // Cumulative extension budget for one bestPlay, not per iteration.
+    int m_threatBudget = 0;
+    int m_extensions = 0;
     Move m_chosenMove;
     std::vector<TTEntry> m_tt;
     int m_lineScore[2][112]{};

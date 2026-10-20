@@ -9,6 +9,9 @@
 #   ./ab_compare.sh --old-commit HEAD~1 --games 8 --plies 30 --seed-base 1
 #   ./ab_compare.sh --old-commit HEAD --new-params "innerPairsDeep=20 innerPairsShallow=12"
 #   ./ab_compare.sh --old-commit HEAD --new-params "innerPairsDeep=20" --build-only
+#   # 同一份工作区源码里 A/B 单个开关（布尔参数也支持）：
+#   ./ab_compare.sh --old-commit HEAD --old-params "threatExtension=false" \
+#     --new-params "threatExtension=true threatExtendMax=2 threatExtendBudget=64"
 set -u
 
 ROOT="/wlf/Six/程序原版压缩包/six"
@@ -21,6 +24,7 @@ PLIES=30
 OPENING_SET=4
 SEED_BASE=1
 NEW_PARAMS=""
+OLD_PARAMS=""
 BUILD_ONLY=0
 
 while (($#)); do
@@ -32,6 +36,7 @@ while (($#)); do
         --seed-base) SEED_BASE="$2"; shift 2 ;;
         --out-root) OUT_ROOT="$2"; shift 2 ;;
         --new-params) NEW_PARAMS="$2"; shift 2 ;;
+        --old-params) OLD_PARAMS="$2"; shift 2 ;;
         --build-only) BUILD_ONLY=1; shift ;;
         *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -44,6 +49,38 @@ fi
 
 mkdir -p "$OUT_ROOT"
 
+apply_params() {
+    local src="$1" params="$2" label="$3"
+    [[ -z "$params" ]] && return 0
+    for kv in $params; do
+        local key="${kv%%=*}" val="${kv#*=}"
+        if [[ -z "$key" || -z "$val" || "$key" == "$val" ]]; then
+            printf 'invalid --%s-params item: %s\n' "$label" "$kv" >&2
+            return 2
+        fi
+        if [[ "$val" == "true" || "$val" == "false" ]]; then
+            if ! SK="$key" SV="$val" perl -0pi -e '
+                my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
+                my $n = s/(\b$k\s*=\s*)(?:true|false)/$1$v/;
+                END { exit 1 unless $n == 1; }
+            ' "$src/Game.h"; then
+                printf 'failed to apply %s param: %s\n' "$label" "$kv" >&2
+                return 2
+            fi
+        else
+            if ! SK="$key" SV="$val" perl -0pi -e '
+                my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
+                my $n = s/(\b$k\s*=\s*)\d+/$1$v/;
+                END { exit 1 unless $n == 1; }
+            ' "$src/Game.h"; then
+                printf 'failed to apply %s param: %s\n' "$label" "$kv" >&2
+                return 2
+            fi
+        fi
+    done
+    return 0
+}
+
 # 1. 构建 match_runner
 MATCH_BUILD="$OUT_ROOT/match-build"
 mkdir -p "$MATCH_BUILD"
@@ -52,17 +89,27 @@ if ! "$QMAKE" -spec linux-clang "$SELF_DIR/match_runner.pro" -o "$MATCH_BUILD/Ma
     exit 2
 fi
 
-# 2. 提取旧版源码并构建 worker
+# 2. 取旧版源码并构建 worker。
+#    --old-params 时用当前工作区源码作 baseline（便于 A/B 单个开关），否则从 commit 提取。
 OLD_SRC="$OUT_ROOT/old-src"
 OLD_BUILD="$OUT_ROOT/old-build"
 rm -rf "$OLD_SRC" "$OLD_BUILD"
 mkdir -p "$OLD_SRC" "$OLD_BUILD"
-for f in Game.cpp Game.h Move.cpp Move.h; do
-    if ! git -C "$ROOT" show "$OLD_COMMIT:$f" > "$OLD_SRC/$f" 2>/dev/null; then
-        printf 'failed to extract %s from %s\n' "$f" "$OLD_COMMIT" >&2
+if [[ -n "$OLD_PARAMS" ]]; then
+    for f in Game.cpp Game.h Move.cpp Move.h; do
+        cp "$ROOT/$f" "$OLD_SRC/$f"
+    done
+    if ! apply_params "$OLD_SRC" "$OLD_PARAMS" old; then
         exit 2
     fi
-done
+else
+    for f in Game.cpp Game.h Move.cpp Move.h; do
+        if ! git -C "$ROOT" show "$OLD_COMMIT:$f" > "$OLD_SRC/$f" 2>/dev/null; then
+            printf 'failed to extract %s from %s\n' "$f" "$OLD_COMMIT" >&2
+            exit 2
+        fi
+    done
+fi
 if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$OLD_BUILD/Makefile" "GAME_DIR=$OLD_SRC" CONFIG+=release CONFIG-=debug >/dev/null || ! make -C "$OLD_BUILD" -j4 >/dev/null; then
     printf 'old worker build failed\n' >&2
     exit 2
@@ -77,23 +124,8 @@ mkdir -p "$NEW_SRC" "$NEW_BUILD"
 for f in Game.cpp Game.h Move.cpp Move.h; do
     cp "$ROOT/$f" "$NEW_SRC/$f"
 done
-if [[ -n "$NEW_PARAMS" ]]; then
-    for kv in $NEW_PARAMS; do
-        key="${kv%%=*}"
-        val="${kv#*=}"
-        if [[ -z "$key" || -z "$val" || "$key" == "$val" ]]; then
-            printf 'invalid --new-params item: %s\n' "$kv" >&2
-            exit 2
-        fi
-        if ! SK="$key" SV="$val" perl -0pi -e '
-            my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
-            my $n = s/(\b$k\s*=\s*)\d+/$1$v/;
-            END { exit 1 unless $n == 1; }
-        ' "$NEW_SRC/Game.h"; then
-            printf 'failed to apply new param: %s\n' "$kv" >&2
-            exit 2
-        fi
-    done
+if ! apply_params "$NEW_SRC" "$NEW_PARAMS" new; then
+    exit 2
 fi
 if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$NEW_BUILD/Makefile" "GAME_DIR=$NEW_SRC" CONFIG+=release CONFIG-=debug >/dev/null || ! make -C "$NEW_BUILD" -j4 >/dev/null; then
     printf 'new worker build failed\n' >&2
@@ -120,17 +152,18 @@ if ! QT_QPA_PLATFORM=offscreen "$MATCH_BUILD/match_runner" \
 fi
 
 # 5. 解析结果
-python3 - "$MATCH_DIR/match.csv" "$OLD_COMMIT" "$GAMES" "$NEW_PARAMS" << 'PYRANK'
+python3 - "$MATCH_DIR/match.csv" "$OLD_COMMIT" "$GAMES" "$NEW_PARAMS" "$OLD_PARAMS" << 'PYRANK'
 import csv, sys
-csv_path, old_commit, games, new_params = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+csv_path, old_commit, games, new_params, old_params = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
 rows = list(csv.DictReader(open(csv_path)))
 def count(sc, w): return sum(1 for r in rows if r["scenario"] == sc and r["winner"] == str(w))
 def n(sc): return sum(1 for r in rows if r["scenario"] == sc)
 cb, cw = count("control", 1), count("control", 2)
 b, w = count("candidate-black", 1), count("candidate-white", 2)
 net = (b - cb) + (w - cw)
+old_desc = old_commit + (("，参数: " + old_params) if old_params else "")
 print("=== A/B 对比（旧版 %s 为 baseline，当前版为候选%s）===" %
-      (old_commit, ("，参数: " + new_params) if new_params else ""))
+      (old_desc, ("，参数: " + new_params) if new_params else ""))
 print("control（旧版自对）: 黑胜 %d / 白胜 %d / 未完成 %d" % (cb, cw, n("control") - cb - cw))
 print("当前版做黑 vs 旧版做白: 黑胜 %d" % b)
 print("当前版做白 vs 旧版做黑: 白胜 %d" % w)
