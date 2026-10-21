@@ -43,10 +43,10 @@ QPoint recordPoint(const QString &name) {
     return {19 - name.mid(1).toInt(), name[0].unicode() - 'A'};
 }
 bool white15Position(Referee &position, QString &error) {
-    const QString path = qEnvironmentVariable("SIX_WHITE15_RECORD");
+    const QString path = qEnvironmentVariable("SIX_WHITE15_RECORD", QFINDTESTDATA("fixtures/white15.txt"));
     QFile file(path);
     if (!QFileInfo(path).isAbsolute() || !file.open(QIODevice::ReadOnly)) {
-        error = "SIX_WHITE15_RECORD must be the user's complete absolute record path: " + file.errorString();
+        error = "Cannot read white15 fixture (SIX_WHITE15_RECORD override): " + file.errorString();
         return false;
     }
     const QByteArray bytes = file.readAll();
@@ -89,7 +89,7 @@ bool anqingPrefix15(Referee &position, QString &error) {
 }
 bool turn17Prefix31(Referee &position, QString &error) {
     const QString path = qEnvironmentVariable("SIX_TURN17_RECORD",
-        "/tmp/opencode/all-human-six-records/C6-sixBvshumanW-先手胜-06.txt");
+        QFINDTESTDATA("fixtures/turn17.txt"));
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) { error = file.errorString(); return false; }
     auto matches = QRegularExpression(";\\s*([BW])\\s*\\(\\s*([A-S])\\s*,\\s*(1[0-9]|[1-9])\\s*\\)")
@@ -476,6 +476,93 @@ private slots:
         game.setType(1); const int black = game.evaluateBoard();
         game.setType(2); QCOMPARE(game.evaluateBoard(), -black);
     }
+    void configurableShapeWeights() {
+        struct Restore {
+            Game::SearchConfig saved = Game::searchConfig;
+            ~Restore() { Game::searchConfig = saved; }
+        } restore;
+        Game::searchConfig.shapeSingle = 2;
+        Game::searchConfig.shapeOpenThree = 4321;
+        Game::searchConfig.shapeOpenFour = 23456;
+        Referee position;
+        for (int y : {8, 9, 10}) position.board[9][y] = 1;
+        Game game; seed(game, position, 1);
+        // One horizontal open three and nine isolated one-stone runs.
+        QCOMPARE(game.evaluateBoard(), 4321 + 9 * 2);
+        QCOMPARE(game.evaluatePoint(9, 11, 1), 23456 - 4321 + 3 * 2);
+        game.set(QPoint(9, 11));
+        QCOMPARE(game.evaluateBoard(), 23456 + 12 * 2);
+        game.gameundo(9, 11);
+        QCOMPARE(game.evaluateBoard(), 4321 + 9 * 2);
+        game.setType(2);
+        QCOMPARE(game.evaluateBoard(), -(4321 + 9 * 2));
+    }
+    void incrementalTacticalConsistency() {
+        struct Restore {
+            Game::SearchConfig saved = Game::searchConfig;
+            ~Restore() { Game::searchConfig = saved; }
+        } restore;
+        Game::searchConfig.incrementalTactics = true;
+        const auto check = [](Game &game) {
+            for (int color : {1, 2}) for (int remaining : {1, 2}) for (bool enumerate : {false, true}) {
+                std::vector<Move> cached, scanned;
+                Game::searchConfig.incrementalTactics = true;
+                const int actual = game.tacticalMoves(color, cached, remaining, enumerate);
+                Game::searchConfig.incrementalTactics = false;
+                const int expected = game.tacticalMoves(color, scanned, remaining, enumerate);
+                Game::searchConfig.incrementalTactics = true;
+                QCOMPARE(actual, expected);
+                QCOMPARE(cached.size(), scanned.size());
+                for (size_t i = 0; i < cached.size(); ++i) {
+                    QCOMPARE(cached[i].step1(), scanned[i].step1());
+                    QCOMPARE(cached[i].step2(), scanned[i].step2());
+                    // Sample the first/last covers with the independent referee.
+                    if (i != 0 && i + 1 != cached.size()) continue;
+                    Referee after = snapshot(game);
+                    for (auto p : {cached[i].step1(), cached[i].step2()}) after.board[p.x()][p.y()] = color;
+                    if (actual == 1) QVERIFY(after.six(color));
+                    if (actual == 2) QVERIFY(after.completions(3 - color).empty());
+                }
+            }
+        };
+        std::mt19937 rng(20261021u);
+        for (int n = 0; n < 24; ++n) {
+            Referee board;
+            for (int i = 0; i < 30 + 4 * n; ++i) {
+                const int x = int(rng() % 19), y = int(rng() % 19);
+                if (board.board[x][y]) { --i; continue; }
+                board.board[x][y] = 1 + int(rng() % 2);
+            }
+            // Include horizontal/vertical/diagonal fours with one/two holes.
+            const QPoint directions[] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
+            const QPoint start(5, n % 4 == 3 ? 12 : 5), direction = directions[n % 4];
+            for (int k = 0; k < 6; ++k) {
+                const QPoint p = start + k * direction;
+                board.board[p.x()][p.y()] = k == 2 || (n % 2 == 0 && k == 4) ? 0 : 1 + n % 2;
+            }
+            Game game; seed(game, board, 1); check(game);
+            std::vector<QPoint> empty;
+            for (int x = 0; x < 19; ++x) for (int y = 0; y < 19; ++y)
+                if (!board.board[x][y]) empty.push_back({x, y});
+            const QPoint a = empty[rng() % empty.size()], b = start + 2 * direction;
+            const QByteArray before(reinterpret_cast<const char*>(game.m_windowCounts), sizeof(game.m_windowCounts));
+            const int forcingBefore = game.m_forcingWindowCount;
+            game.placeStone(a.x(), a.y(), 1); check(game);
+            game.placeStone(a.x(), a.y(), 2); check(game);
+            game.clearStone(a.x(), a.y());
+            game.make(a, b); check(game); game.unmake(a, b); check(game);
+            QCOMPARE(QByteArray(reinterpret_cast<const char*>(game.m_windowCounts), sizeof(game.m_windowCounts)), before);
+            QCOMPARE(game.m_forcingWindowCount, forcingBefore);
+            QVERIFY(snapshot(game).board == board.board);
+            game.m_timeLimitMs = 5; game.m_timer.start(); game.m_timedOut = false;
+            game.m_threatBudget = 64; game.m_qNodes = 0;
+            game.negamax(6, -1000000000, 1000000000, 1, 0, game.boardHash());
+            game.m_timer.invalidate(); game.m_timedOut = false;
+            check(game);
+            QCOMPARE(QByteArray(reinterpret_cast<const char*>(game.m_windowCounts), sizeof(game.m_windowCounts)), before);
+            QVERIFY(snapshot(game).board == board.board);
+        }
+    }
     void incrementalScoreConsistency() {
         std::mt19937 rng(20261020u);
         const auto checkCache = [](Game &game, const Referee &board) {
@@ -665,6 +752,12 @@ private slots:
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
+    const QByteArray budgetTt = qgetenv("SIX_INCREMENTAL_TACTICS");
+    if (!budgetTt.isEmpty()) {
+        if (budgetTt != "0" && budgetTt != "1") return 2;
+        Game::searchConfig.incrementalTactics = budgetTt == "1";
+    }
+    qInfo() << "incrementalTactics under test:" << Game::searchConfig.incrementalTactics;
     QTimer closer; closeResultDialogs(closer);
     OfflineTests tests;
     return QTest::qExec(&tests, argc, argv);

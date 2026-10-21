@@ -15,6 +15,31 @@ constexpr int INF = 1000000000;      // 搜索正/负无穷
 constexpr int WIN_SCORE = 100000000; // 已成六连（必胜）的评分
 constexpr int WIN_THRESHOLD = 80000; // estimate 返回超过此值视为直接杀棋
 
+struct SixWindowGeometry {
+    std::array<std::array<int, 6>, 924> windows{};
+    std::array<std::vector<int>, 361> incidence;
+    SixWindowGeometry() {
+        const int directions[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+        int index = 0;
+        for (int x = 0; x < 19; ++x) for (int y = 0; y < 19; ++y)
+            for (const auto& dir : directions) {
+                const int ex = x + 5 * dir[0], ey = y + 5 * dir[1];
+                if (ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
+                for (int k = 0; k < 6; ++k) {
+                    const int point = (x + k * dir[0]) * 19 + y + k * dir[1];
+                    windows[index][k] = point;
+                    incidence[point].push_back(index);
+                }
+                ++index;
+            }
+        Q_ASSERT(index == 924);
+    }
+};
+const SixWindowGeometry& sixWindows() {
+    static const SixWindowGeometry geometry;
+    return geometry;
+}
+
 }
 
 Game::SearchConfig Game::searchConfig;
@@ -620,12 +645,13 @@ quint64 Game::boardHash() const
 
 static int lineShape(int run, int open)
 {
-    if (run >= 6) return 100000;
-    if (run == 5) return open >= 1 ? 60000 : 0;
-    if (run == 4) return open == 2 ? 20000 : (open == 1 ? 3000 : 0);
-    if (run == 3) return open == 2 ? 1000 : (open == 1 ? 100 : 0);
-    if (run == 2) return open == 2 ? 20 : 0;
-    return 1;
+    const auto &weights = Game::searchConfig;
+    if (run >= 6) return weights.shapeSix;
+    if (run == 5) return open >= 1 ? weights.shapeFive : 0;
+    if (run == 4) return open == 2 ? weights.shapeOpenFour : (open == 1 ? weights.shapeClosedFour : 0);
+    if (run == 3) return open == 2 ? weights.shapeOpenThree : (open == 1 ? weights.shapeClosedThree : 0);
+    if (run == 2) return open == 2 ? weights.shapeOpenTwo : 0;
+    return weights.shapeSingle;
 }
 
 namespace {
@@ -890,12 +916,14 @@ void Game::placeStone(int x, int y, int color)
         m_lineScore[1][id] += delta.white;
     }
     m_chess[x][y] = color;
+    if (searchConfig.incrementalTactics && color != 0) updateTacticalWindows(x, y, color, 1);
 }
 
 void Game::clearStone(int x, int y)
 {
     const int color = m_chess[x][y];
     if (color == 0) return;
+    if (searchConfig.incrementalTactics) updateTacticalWindows(x, y, color, -1);
     m_chess[x][y] = 0;
     for (int d = 0; d < 4; ++d) {
         int sx, sy;
@@ -976,7 +1004,27 @@ bool Game::createsThreat(QPoint a, QPoint b, int piece) const
     return false;
 }
 
-void Game::rebuildSearch()
+void Game::updateTacticalWindows(int x, int y, int color, int delta)
+{
+    for (int index : sixWindows().incidence[x * 19 + y]) {
+        auto& counts = m_windowCounts[index];
+        const bool before = counts[2] >= 4 && (counts[0] == 0 || counts[1] == 0);
+        counts[2] += delta;
+        if (color == 1 || color == 2) counts[color - 1] += delta;
+        const bool after = counts[2] >= 4 && (counts[0] == 0 || counts[1] == 0);
+        m_forcingWindowCount += int(after) - int(before);
+    }
+}
+
+void Game::rebuildTacticalWindows()
+{
+    for (auto& window : m_windowCounts) for (auto& count : window) count = 0;
+    m_forcingWindowCount = 0;
+    for (int x = 0; x < 19; ++x) for (int y = 0; y < 19; ++y)
+        if (m_chess[x][y] != 0) updateTacticalWindows(x, y, m_chess[x][y], 1);
+}
+
+void Game::rebuildSearch(bool rebuildCaches)
 {
     m_search.reserve(361);
     m_search.clear();
@@ -991,18 +1039,23 @@ void Game::rebuildSearch()
                         near = true;
             if (near) m_search.push_back({x, y});
         }
-    recomputeLineScores();
+    if (rebuildCaches || !searchConfig.incrementalTactics) {
+        recomputeLineScores();
+        if (searchConfig.incrementalTactics) rebuildTacticalWindows();
+    }
 }
 
 int Game::tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaining,
                         bool enumerate, qint64 deadlineMs)
 {
     out.clear();
-    out.reserve(361);
     const auto interrupted = [&]() {
         return timedOut() || (deadlineMs >= 0 && m_timer.elapsed() >= deadlineMs);
     };
     if (interrupted()) return -2;
+    const bool cached = searchConfig.incrementalTactics && (pieceType == 1 || pieceType == 2);
+    if (cached && m_forcingWindowCount == 0) return 0;
+    out.reserve(361);
     int empty[361], emptyCount = 0;
     for (int x = 0; x < 19; ++x)
         for (int y = 0; y < 19; ++y)
@@ -1012,43 +1065,71 @@ int Game::tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaini
 
     // At most 924 six-cell windows. A singleton uses the same index twice.
     int threats[924][2], threatCount = 0;
-    const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
-    for (int x = 0; x < 19; ++x) {
-        if (interrupted()) { out.clear(); return -2; }
-        for (int y = 0; y < 19; ++y)
-            for (const auto& dir : DIR) {
-                int ex = x + 5 * dir[0], ey = y + 5 * dir[1];
-                if (ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
-                int own = 0, enemy = 0;
-                int holes[2];
-                int holeCount = 0;
-                int cx = x, cy = y;
-                for (int t = 0; t < 6; ++t) {
-                    int v = m_chess[cx][cy];
-                    if (v == 0) {
-                        if (holeCount == 2) { ++holeCount; break; }
-                        holes[holeCount++] = cx * 19 + cy;
-                    }
-                    else if (v == pieceType) ++own;
-                    else ++enemy;
-                    if (own && enemy) break;
-                    cx += dir[0]; cy += dir[1];
-                }
-                if ((own && enemy) || holeCount == 0 || holeCount > 2) continue;
-                if (enemy == 0 && own >= 4 && holeCount <= stonesRemaining) {
-                    int a = holes[0], b = holes[holeCount - 1];
-                    if (a == b && stonesRemaining == 2)
-                        for (int i = 0; i < emptyCount; ++i)
-                            if (empty[i] != a) { b = empty[i]; break; }
-                    out.emplace_back(QPoint(a / 19, a % 19), QPoint(b / 19, b % 19), WIN_SCORE);
-                    if (interrupted()) { out.clear(); return -2; }
-                    return 1; // Winning now takes precedence over every defense.
-                }
-                if (own == 0 && enemy >= 4) {
-                    threats[threatCount][0] = holes[0];
-                    threats[threatCount++][1] = holes[holeCount - 1];
-                }
+    if (cached) {
+        const auto& geometry = sixWindows();
+        // Geometry uses the legacy x/y/direction order, preserving move order.
+        for (int index = 0; index < 924; ++index) {
+            if ((index & 31) == 0 && interrupted()) { out.clear(); return -2; }
+            const auto& counts = m_windowCounts[index];
+            const int own = counts[pieceType - 1], enemy = counts[2] - own;
+            const int holeCount = 6 - counts[2];
+            if ((own && enemy) || holeCount == 0 || holeCount > 2) continue;
+            int holes[2], n = 0;
+            for (int point : geometry.windows[index])
+                if (m_chess[point / 19][point % 19] == 0) holes[n++] = point;
+            if (enemy == 0 && own >= 4 && holeCount <= stonesRemaining) {
+                int a = holes[0], b = holes[holeCount - 1];
+                if (a == b && stonesRemaining == 2)
+                    for (int i = 0; i < emptyCount; ++i)
+                        if (empty[i] != a) { b = empty[i]; break; }
+                out.emplace_back(QPoint(a / 19, a % 19), QPoint(b / 19, b % 19), WIN_SCORE);
+                if (interrupted()) { out.clear(); return -2; }
+                return 1;
             }
+            if (own == 0 && enemy >= 4) {
+                threats[threatCount][0] = holes[0];
+                threats[threatCount++][1] = holes[holeCount - 1];
+            }
+        }
+    } else {
+        const int DIR[4][2] = {{0,1}, {1,0}, {1,1}, {1,-1}};
+        for (int x = 0; x < 19; ++x) {
+            if (interrupted()) { out.clear(); return -2; }
+            for (int y = 0; y < 19; ++y)
+                for (const auto& dir : DIR) {
+                    int ex = x + 5 * dir[0], ey = y + 5 * dir[1];
+                    if (ex < 0 || ex >= 19 || ey < 0 || ey >= 19) continue;
+                    int own = 0, enemy = 0;
+                    int holes[2];
+                    int holeCount = 0;
+                    int cx = x, cy = y;
+                    for (int t = 0; t < 6; ++t) {
+                        int v = m_chess[cx][cy];
+                        if (v == 0) {
+                            if (holeCount == 2) { ++holeCount; break; }
+                            holes[holeCount++] = cx * 19 + cy;
+                        }
+                        else if (v == pieceType) ++own;
+                        else ++enemy;
+                        if (own && enemy) break;
+                        cx += dir[0]; cy += dir[1];
+                    }
+                    if ((own && enemy) || holeCount == 0 || holeCount > 2) continue;
+                    if (enemy == 0 && own >= 4 && holeCount <= stonesRemaining) {
+                        int a = holes[0], b = holes[holeCount - 1];
+                        if (a == b && stonesRemaining == 2)
+                            for (int i = 0; i < emptyCount; ++i)
+                                if (empty[i] != a) { b = empty[i]; break; }
+                        out.emplace_back(QPoint(a / 19, a % 19), QPoint(b / 19, b % 19), WIN_SCORE);
+                        if (interrupted()) { out.clear(); return -2; }
+                        return 1; // Winning now takes precedence over every defense.
+                    }
+                    if (own == 0 && enemy >= 4) {
+                        threats[threatCount][0] = holes[0];
+                        threats[threatCount++][1] = holes[holeCount - 1];
+                    }
+                }
+        }
     }
     if (interrupted()) { out.clear(); return -2; }
     if (threatCount == 0) return 0;
@@ -1192,15 +1273,19 @@ bool Game::timedOut()
 
 int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint64 hash)
 {
+    ++m_searchStats.nodes;
     if (timedOut()) return 0;
 
     const bool useTt = searchConfig.ttEnabled && !searchConfig.threatExtension;
     if (depth > 0 && useTt) {
+        ++m_searchStats.ttProbes;
         TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
         if (te.key == hash && te.depth >= depth) {
-            if (te.flag == 1) return te.score;
-            if (te.flag == 2 && te.score >= beta) return te.score;
-            if (te.flag == 3 && te.score <= alpha) return te.score;
+            if (te.flag == 1 || (te.flag == 2 && te.score >= beta)
+                || (te.flag == 3 && te.score <= alpha)) {
+                ++m_searchStats.ttHits;
+                return te.score;
+            }
         }
     }
 
@@ -1265,7 +1350,7 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
             score = WIN_SCORE;
         } else {
             if (depth > 1)
-                rebuildSearch();
+                rebuildSearch(false);
             const quint64 childHash = hash ^ z.table[a.x()][a.y()][pieceType]
                                       ^ z.table[b.x()][b.y()][pieceType] ^ z.side;
             int childDepth = std::max(0, depth - 1);
@@ -1301,6 +1386,7 @@ int Game::negamax(int depth, int alpha, int beta, int pieceType, int qply, quint
     if (depth > 0 && useTt && !m_timedOut && result > -WIN_SCORE + 1 && result < WIN_SCORE - 1) {
         TTEntry& te = m_tt[hash & (TT_SIZE - 1)];
         if (te.key != hash || te.depth <= depth) {
+            ++m_searchStats.ttStores;
             te.key = hash;
             te.depth = depth;
             te.score = result;
@@ -1323,6 +1409,7 @@ void Game::bestPlay(int stonesRemaining)
     m_timeLimitMs = searchConfig.timeLimitMs;
     m_timedOut = false;
     m_qNodes = 0;
+    m_searchStats = SearchStats{};
     m_threatBudget = searchConfig.threatExtendBudget;
     m_extensions = 0;
 
@@ -1350,6 +1437,8 @@ void Game::bestPlay(int stonesRemaining)
         m_search = originalSearch;
         // No legal turn remains; do not fabricate an occupied point.
         m_chosenMove = Move(QPoint(-1, -1), QPoint(-1, -1), 0);
+        m_searchStats.stopReason = "no_legal_turn";
+        m_searchStats.elapsedMs = m_timer.elapsed();
         emit stop();
         return;
     }
@@ -1582,7 +1671,7 @@ void Game::bestPlay(int stonesRemaining)
                     // the opponent may have an immediate win which is now blocked.
                     std::vector<Move> replies;
                     auto search = m_search;
-                    rebuildSearch();
+                    rebuildSearch(false);
                     int replyTactic = generateCandidates(oppPiece, replies, searchConfig.probePoints,
                                                          searchConfig.probeReplies, 2, probeDeadline);
                     m_search = std::move(search);
@@ -1688,6 +1777,11 @@ void Game::bestPlay(int stonesRemaining)
              << "excluded:" << excluded << "unknown:" << unknown
              << "elapsedMs:" << m_timer.elapsed();
 
+    m_searchStats.rootCandidates = rootCount;
+    m_searchStats.rootSurvivors = static_cast<int>(root.size());
+    m_searchStats.rootExcluded = excluded;
+    m_searchStats.rootUnknown = unknown;
+    m_searchStats.precheckMs = m_timer.elapsed();
     int bestScore = rootTactic == 1 ? WIN_SCORE :
                     rootTactic == -1 ? -WIN_SCORE : -INF;
     Move bestMove = root[0];
@@ -1699,6 +1793,10 @@ void Game::bestPlay(int stonesRemaining)
     int completedDepth = 0;
     std::vector<Move> scoredRoot;
     for (int depth = 1; rootTactic != 1 && rootTactic != -1 && depth <= maxDepth; depth++) {
+        const quint64 nodesBefore = m_searchStats.nodes;
+        const quint64 hitsBefore = m_searchStats.ttHits;
+        const int budgetBefore = m_threatBudget;
+        const int qBefore = m_qNodes;
         int iterBestScore = -INF;
         Move iterBest = bestMove;
         std::vector<Move> iterScores;
@@ -1724,7 +1822,7 @@ void Game::bestPlay(int stonesRemaining)
                 (stonesRemaining == 2 && hasSix(b.x(), b.y(), myPiece))) {
                 score = WIN_SCORE;
             } else {
-                rebuildSearch();
+                rebuildSearch(false);
                 quint64 childHash = rootHash ^ z.table[a.x()][a.y()][myPiece];
                 if (stonesRemaining == 2) childHash ^= z.table[b.x()][b.y()][myPiece];
                 childHash ^= z.side;
@@ -1754,6 +1852,10 @@ void Game::bestPlay(int stonesRemaining)
             }
         }
 
+        m_searchStats.iterations.push_back({depth, !m_timedOut,
+            m_searchStats.nodes - nodesBefore, m_searchStats.ttHits - hitsBefore,
+            static_cast<int>(iterScores.size()), budgetBefore - m_threatBudget,
+            m_qNodes - qBefore, m_timer.elapsed()});
         if (m_timedOut)
             break;
 
@@ -1807,6 +1909,12 @@ void Game::bestPlay(int stonesRemaining)
         bestScore = bestMove.score();
     }
 
+    m_searchStats.completedDepth = completedDepth;
+    m_searchStats.extensionsUsed = searchConfig.threatExtendBudget - m_threatBudget;
+    m_searchStats.elapsedMs = m_timer.elapsed();
+    m_searchStats.stopReason = rootTactic == 1 ? "immediate_win" :
+        rootTactic == -1 ? "root_loss" : bestScore >= WIN_SCORE ? "winning_score" :
+        (m_timedOut || m_searchStats.elapsedMs >= m_timeLimitMs) ? "time_limit" : "max_depth";
     m_type = savedType;
     m_last = savedLastG; m_llast = savedLLastG;
     m_search = originalSearch;

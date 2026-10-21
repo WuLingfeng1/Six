@@ -44,10 +44,47 @@ public:
         double randomTemp = 2000.0;
         int randomSeed = 0;
         bool ttEnabled = true;
+        bool incrementalTactics = false; // Maintain six-window counts during search.
         bool threatExtension = true;
         int threatExtendMax = 2;
         int threatExtendBudget = 64;
+        // Actual lineShape weights; configure before constructing/seeding Game.
+        int shapeSingle = 1;
+        int shapeOpenTwo = 20;
+        int shapeClosedThree = 100;
+        int shapeOpenThree = 1000;
+        int shapeClosedFour = 3000;
+        int shapeOpenFour = 20000;
+        int shapeFive = 60000;
+        int shapeSix = 100000;
     };
+    struct SearchIteration {
+        int depth = 0;
+        bool complete = false;
+        quint64 nodes = 0;
+        quint64 ttHits = 0;
+        int rootMoves = 0;
+        int extensionsUsed = 0;
+        int qNodes = 0;
+        qint64 elapsedMs = 0;
+    };
+    struct SearchStats {
+        quint64 nodes = 0;
+        quint64 ttProbes = 0;
+        quint64 ttHits = 0;
+        quint64 ttStores = 0;
+        int completedDepth = 0;
+        int extensionsUsed = 0;
+        int rootCandidates = 0;
+        int rootSurvivors = 0;
+        int rootExcluded = 0;
+        int rootUnknown = 0;
+        qint64 precheckMs = 0;
+        qint64 elapsedMs = 0;
+        const char* stopReason = "not_started";
+        std::vector<SearchIteration> iterations;
+    };
+    const SearchStats& searchStats() const { return m_searchStats; }
     static SearchConfig searchConfig;
     static void seedRandom(unsigned seed);
     void ourFirstPlay();
@@ -71,7 +108,7 @@ public:
     int evaluatePair(QPoint a, QPoint b, int piece);
     bool hasSix(int x, int y, int piece);
     bool createsThreat(QPoint a, QPoint b, int piece) const;
-    void rebuildSearch();
+    void rebuildSearch(bool rebuildCaches = true);
     // 1: immediate win, 2: required defenses, -1: undefendable, 0: quiet.
     // -2: interrupted/unknown. enumerate=false only checks existence of a cover.
     int tacticalMoves(int pieceType, std::vector<Move>& out, int stonesRemaining = 2,
@@ -124,9 +161,14 @@ private:
     int m_qNodes = 0; // Cumulative extension budget for one bestPlay, not per iteration.
     int m_threatBudget = 0;
     int m_extensions = 0;
+    SearchStats m_searchStats;
     Move m_chosenMove;
     std::vector<TTEntry> m_tt;
     int m_lineScore[2][112]{};
+    unsigned char m_windowCounts[924][3]{}; // black, white, occupied
+    int m_forcingWindowCount = 0;
+    void updateTacticalWindows(int x, int y, int color, int delta);
+    void rebuildTacticalWindows();
     void recomputeLineScores();
     void placeStone(int x, int y, int color);
     void clearStone(int x, int y);
