@@ -52,33 +52,8 @@ mkdir -p "$OUT_ROOT"
 apply_params() {
     local src="$1" params="$2" label="$3"
     [[ -z "$params" ]] && return 0
-    for kv in $params; do
-        local key="${kv%%=*}" val="${kv#*=}"
-        if [[ -z "$key" || -z "$val" || "$key" == "$val" ]]; then
-            printf 'invalid --%s-params item: %s\n' "$label" "$kv" >&2
-            return 2
-        fi
-        if [[ "$val" == "true" || "$val" == "false" ]]; then
-            if ! SK="$key" SV="$val" perl -0pi -e '
-                my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
-                my $n = s/(\b$k\s*=\s*)(?:true|false)/$1$v/;
-                END { exit 1 unless $n == 1; }
-            ' "$src/Game.h"; then
-                printf 'failed to apply %s param: %s\n' "$label" "$kv" >&2
-                return 2
-            fi
-        else
-            if ! SK="$key" SV="$val" perl -0pi -e '
-                my $k = $ENV{"SK"}; my $v = $ENV{"SV"};
-                my $n = s/(\b$k\s*=\s*)\d+/$1$v/;
-                END { exit 1 unless $n == 1; }
-            ' "$src/Game.h"; then
-                printf 'failed to apply %s param: %s\n' "$label" "$kv" >&2
-                return 2
-            fi
-        fi
-    done
-    return 0
+    python3 "$SELF_DIR/config_tools.py" "$src/Game.h" --params "$params"
+
 }
 
 # 1. 构建 match_runner
@@ -116,7 +91,7 @@ if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$OLD_BUILD/Ma
 fi
 
 # 3. 复制当前工作区源码，可选补丁 SearchConfig 默认值，再构建新版 worker。
-#    每个 --out-root 有独立的 new-src/new-build，可并发跑不同候选。
+#    每个 --out-root 有独立的 new-src/new-build；限时棋力实验应串行运行。
 NEW_SRC="$OUT_ROOT/new-src"
 NEW_BUILD="$OUT_ROOT/new-build"
 rm -rf "$NEW_SRC" "$NEW_BUILD"
@@ -129,6 +104,12 @@ if ! apply_params "$NEW_SRC" "$NEW_PARAMS" new; then
 fi
 if ! "$QMAKE" -spec linux-clang "$SELF_DIR/self_iteration.pro" -o "$NEW_BUILD/Makefile" "GAME_DIR=$NEW_SRC" CONFIG+=release CONFIG-=debug >/dev/null || ! make -C "$NEW_BUILD" -j4 >/dev/null; then
     printf 'new worker build failed\n' >&2
+    exit 2
+fi
+
+# Validate both actual runtime defaults and embedded source fingerprints.
+if ! python3 "$SELF_DIR/verify_worker.py" "$OLD_BUILD/self_iteration" "$OLD_SRC" > "$OUT_ROOT/old-manifest.json" \
+   || ! python3 "$SELF_DIR/verify_worker.py" "$NEW_BUILD/self_iteration" "$NEW_SRC" > "$OUT_ROOT/new-manifest.json"; then
     exit 2
 fi
 
@@ -161,12 +142,12 @@ def n(sc): return sum(1 for r in rows if r["scenario"] == sc)
 cb, cw = count("control", 1), count("control", 2)
 b, w = count("candidate-black", 1), count("candidate-white", 2)
 net = (b - cb) + (w - cw)
-old_desc = old_commit + (("，参数: " + old_params) if old_params else "")
+old_desc = ("当前源码，参数: " + old_params) if old_params else old_commit
 print("=== A/B 对比（旧版 %s 为 baseline，当前版为候选%s）===" %
       (old_desc, ("，参数: " + new_params) if new_params else ""))
 print("control（旧版自对）: 黑胜 %d / 白胜 %d / 未完成 %d" % (cb, cw, n("control") - cb - cw))
 print("当前版做黑 vs 旧版做白: 黑胜 %d" % b)
 print("当前版做白 vs 旧版做黑: 白胜 %d" % w)
 print("net = (做黑 %+d) + (做白 %+d) = %+d" % (b - cb, w - cw, net))
-print("（正数 = 当前版更强；样本 %d 局/场景）" % games)
+print("（正数表示本组样本净增胜局，不代表统计显著；样本 %d 局/场景）" % games)
 PYRANK

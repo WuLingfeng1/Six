@@ -8,11 +8,14 @@
 #include <QRegularExpression>
 #include <QFileInfo>
 #include <QElapsedTimer>
+#include <QCryptographicHash>
+#include <QSet>
 #include <QTextStream>
 #include <QVector>
 #include <array>
 #include <optional>
 #include <algorithm>
+#include "openings.h"
 
 namespace {
 using Board = std::array<std::array<int, 19>, 19>;
@@ -42,17 +45,40 @@ struct Referee {
     }
 };
 struct Fixture {
-    QString name, source, currentColor, oldLabel, actualHistorical;
+    QString name, source, currentColor, oldLabel, actualHistorical, prefixSha, sourceSha;
     Referee referee;
     int prefix = 0;
     QVector<QPair<int,int>> prefixMoves;
 };
 bool g_randomize = false;
 int g_seedBase = 1;
+QJsonObject g_workers;
+QJsonObject inspectWorker(const QString &path) {
+    QProcess process;
+    QStringList args{"--mode", "config"};
+    if (g_randomize) args << "--randomize" << "--seed" << QString::number(g_seedBase);
+    process.start(path, args);
+    if (!process.waitForStarted(5000) || !process.waitForFinished(10000)
+        || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) return {};
+    return QJsonDocument::fromJson(process.readAllStandardOutput()).object();
+}
+bool invalidScenarios(const QJsonArray &scenarios) {
+    for (auto value : scenarios) for (auto game : value.toObject()["games"].toArray()) {
+        const auto entry = game.toObject();
+        const QString result = entry["result"].toString();
+        if (entry["illegal"].toInt() != 0
+            || (result != "black_win" && result != "white_win" && result != "unfinished" && result != "draw")) return true;
+    }
+    return false;
+}
 QString option(const QStringList &a, const QString &key, const QString &fallback = {}) { int i=a.indexOf(key); return i>=0&&i+1<a.size()?a[i+1]:fallback; }
 QString notation(int x, int y) { return QString(QChar('A'+y))+QString::number(19-x); }
 QByteArray boardLine(const Referee &r, int color) { QByteArray out="BOARD "; out += color==1 ? "B" : "W"; for (int x=0;x<19;++x) for(int y=0;y<19;++y) { out += ' '; out += QByteArray::number(r.board[x][y]); } return out+'\n'; }
-QVector<QPair<int,int>> opening(int id) { if(id==0)return {{9,8},{7,10}}; if(id==1)return {{12,11},{5,7}}; if(id==2)return {{8,7},{10,11}}; if(id==3)return {{11,6},{7,12}}; return {}; }
+QVector<QPair<int,int>> opening(int id) {
+    QVector<QPair<int,int>> result;
+    for (QPoint p : experimentOpening(id)) result.append({p.x(), p.y()});
+    return result;
+}
 QJsonArray moveJson(const QVector<QPair<int,int>> &m) { QJsonArray a; for(auto p:m)a.append(notation(p.first,p.second)); return a; }
 
 std::optional<Fixture> loadFixture(const QString &name, const QString &source, int prefix) {
@@ -90,6 +116,46 @@ std::optional<Fixture> loadFixture(const QString &name, const QString &source, i
     return f;
 }
 
+bool loadMidgames(const QByteArray &bytes, QList<Fixture> &fixtures) {
+    const auto root = QJsonDocument::fromJson(bytes).object();
+    const auto positions = root["positions"].toArray();
+    if (root["schema"].toString() != "connect6-midgames-v1" || positions.isEmpty()) return false;
+    QSet<QString> ids, hashes;
+    const QRegularExpression notationRe("^([A-S])(1[0-9]|[1-9])$");
+    for (auto value : positions) {
+        const auto position = value.toObject();
+        Fixture f;
+        f.name = position["id"].toString();
+        f.source = position["source"].toString();
+        f.sourceSha = position["source_sha256"].toString();
+        const auto moves = position["prefix_moves"].toArray();
+        if (f.name.isEmpty() || ids.contains(f.name) || moves.isEmpty()
+            || moves.size() % 2 != 1 || moves.first().toString() != "J10") return false;
+        QStringList notationMoves;
+        for (auto point : moves) {
+            const auto match = notationRe.match(point.toString());
+            if (!match.hasMatch()) return false;
+            const int x = 19 - match.captured(2).toInt(), y = match.captured(1)[0].unicode() - 'A';
+            const int n = f.referee.stones;
+            const int color = n == 0 ? 1 : (((n - 1) / 2) % 2 == 0 ? 2 : 1);
+            if (!f.referee.put(x, y, color)) return false;
+            f.prefixMoves.append({x, y});
+            notationMoves.append(point.toString());
+        }
+        if (f.referee.winner) return false;
+        f.prefix = f.referee.stones;
+        f.currentColor = ((f.prefix - 1) / 2) % 2 == 0 ? "W" : "B";
+        f.prefixSha = QString::fromLatin1(QCryptographicHash::hash(
+            notationMoves.join(' ').toLatin1(), QCryptographicHash::Sha256).toHex());
+        if (position["stones"].toInt() != f.prefix
+            || position["current_color"].toString() != f.currentColor
+            || position["prefix_sha256"].toString() != f.prefixSha || hashes.contains(f.prefixSha)) return false;
+        ids.insert(f.name); hashes.insert(f.prefixSha);
+        fixtures.append(f);
+    }
+    return true;
+}
+
 bool readProtocol(QProcess &p, QString &line, int timeout) {
     QElapsedTimer timer; timer.start();
     while (!p.canReadLine()) {
@@ -107,9 +173,9 @@ QJsonObject play(const QString &blackPath, const QString &whitePath, int game, i
         whiteArgs << "--randomize" << "--seed" << QString::number(seed);
     }
     QProcess black, white; black.start(blackPath, blackArgs); white.start(whitePath, whiteArgs);
-    QJsonObject result{{"game",game+1},{"max_double_turns",maxTurns}}; QJsonArray transcript;
-    if (fixture) { result["fixture"] = fixture->name; result["source"] = fixture->source; result["prefix_plies"] = fixture->prefix; result["current_color"] = fixture->currentColor; result["forced_color"] = fixture->currentColor; result["initial_stones"] = fixture->referee.stones; result["prefix_moves"] = moveJson(fixture->prefixMoves); }
-    else result["opening_id"] = game % openingSet;
+    QJsonObject result{{"game",game+1},{"max_double_turns",maxTurns},{"randomize",g_randomize},{"seed",g_seedBase+game}}; QJsonArray transcript;
+    if (fixture) { result["fixture"] = fixture->name; result["source"] = fixture->source; result["prefix_plies"] = fixture->prefix; result["current_color"] = fixture->currentColor; result["forced_color"] = fixture->currentColor; result["initial_stones"] = fixture->referee.stones; result["prefix_moves"] = moveJson(fixture->prefixMoves); result["prefix_sha256"] = fixture->prefixSha; result["source_sha256"] = fixture->sourceSha; }
+    else { result["opening_id"] = game % openingSet; result["opening_moves"] = moveJson(opening(game % openingSet)); }
     if(!black.waitForStarted(1000)||!white.waitForStarted(1000)){ result["result"]="worker_start_failed"; return result; }
     Referee r; int color = 1;
     if (fixture) r = fixture->referee;
@@ -123,10 +189,11 @@ QJsonObject play(const QString &blackPath, const QString &whitePath, int game, i
         if(!readProtocol(worker,line,4000)){ result["result"]="timeout"; result["winner"]=r.winner; result["transcript"]=transcript; result["illegal"]=illegal; black.kill(); white.kill(); return result; }
         const QStringList t=line.split(QRegularExpression("\\s+"),Qt::SkipEmptyParts); QVector<QPair<int,int>> move; bool ok=t.size()>=2&&t[0]=="MOVE"; int n=ok?t[1].toInt(&ok):-1;
         if(!ok||n<1||n>2||(t.size()!=2+2*n)){ ++illegal; result["result"]="illegal"; item["raw"]=line; transcript.append(item); break; }
-        for(int i=0;i<n;++i){ bool xok=false,yok=false; int x=t[2+2*i].toInt(&xok),y=t[3+2*i].toInt(&yok); ok&=xok&&yok; move.append({x,y}); }
+        for(int i=0;i<n;++i){ bool xok=false,yok=false; int x=t[2+2*i].toInt(&xok),y=t[3+2*i].toInt(&yok); ok&=xok&&yok&&x>=0&&x<19&&y>=0&&y<19; move.append({x,y}); }
         bool firstWins = ok && r.board[move[0].first][move[0].second] == 0;
         if (firstWins) { Referee after = r; firstWins = after.put(move[0].first, move[0].second, color) && after.winner == color; }
         if (n == 1 && !firstWins) ok = false;
+        if (!ok) { ++illegal; result["result"]="illegal"; item["raw"]=line; transcript.append(item); break; }
         for(auto p:move) { if (!r.put(p.first,p.second,color)) { ok = false; break; } }
         item["move"]=moveJson(move); item["direct_win"] = r.winner == color; item["opponent_direct_available"] = opponentDirect; transcript.append(item);
         if (r.winner == color) { ++directWins; if (!firstDirectWin) firstDirectWin = turn + 1; }
@@ -229,6 +296,56 @@ QJsonObject compareTranscript(const QJsonObject &control, const QJsonObject &can
     }
     return {};
 }
+
+int runMidgames(const QString &path, const QString &out, const QString &baseline,
+                const QString &candidate, int repetitions, int turns) {
+    QFile input(path);
+    if (!input.open(QIODevice::ReadOnly)) return 2;
+    const auto bytes = input.readAll();
+    QList<Fixture> fixtures;
+    if (!loadMidgames(bytes, fixtures)) {
+        QTextStream(stderr) << "invalid midgame suite\n"; return 2;
+    }
+    const int count = repetitions * fixtures.size();
+    QJsonArray scenarios, comparisons;
+    for (const QString &scenario : {QString("control"), QString("candidate-black"), QString("candidate-white")}) {
+        QJsonArray games;
+        for (int i = 0; i < count; ++i) {
+            const auto &fixture = fixtures[i % fixtures.size()];
+            auto game = play(scenario == "candidate-black" ? candidate : baseline,
+                             scenario == "candidate-white" ? candidate : baseline,
+                             i, turns, 1, &fixture);
+            game["repetition"] = i / fixtures.size() + 1;
+            games.append(game);
+            const QJsonObject progress{{"scenario", scenario}, {"finished", i + 1},
+                                      {"requested", count}, {"fixture", fixture.name}};
+            QFile checkpoint(QFileInfo(out).path() + "/progress.json");
+            if (checkpoint.open(QIODevice::WriteOnly)) checkpoint.write(QJsonDocument(progress).toJson());
+            QTextStream(stderr) << scenario << " " << i+1 << "/" << count << " "
+                                << fixture.name << " " << game["result"].toString() << '\n';
+        }
+        scenarios.append(QJsonObject{{"scenario", scenario}, {"games", games}});
+    }
+    const auto control = scenarios[0].toObject()["games"].toArray();
+    for (int s = 1; s < 3; ++s) {
+        const auto games = scenarios[s].toObject()["games"].toArray();
+        const QString side = s == 1 ? "black" : "white";
+        for (int i = 0; i < count; ++i) {
+            const auto diff = compareTranscript(control[i].toObject(), games[i].toObject(), side);
+            comparisons.append(QJsonObject{{"game", i+1}, {"fixture", fixtures[i % fixtures.size()].name},
+                {"candidate_side", side}, {"first_difference", diff.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(diff)}});
+        }
+    }
+    const QJsonObject root{{"mode", "baseline-vs-candidate-midgames"}, {"games", count},
+        {"games_per_position", repetitions}, {"plies", turns}, {"seed_base", g_seedBase},
+        {"randomize", g_randomize}, {"workers", g_workers}, {"position_suite_path", path},
+        {"position_suite_sha256", QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())},
+        {"position_suite", QJsonDocument::fromJson(bytes).object()}, {"scenarios", scenarios}, {"comparisons", comparisons}};
+    QFile file(out);
+    if (!file.open(QIODevice::WriteOnly)) return 3;
+    file.write(QJsonDocument(root).toJson());
+    return invalidScenarios(scenarios) ? 4 : 0;
+}
 }
 int main(int argc,char **argv){ QCoreApplication app(argc,argv); const auto a=app.arguments();
       if (a.contains("--randomize")) g_randomize = true;
@@ -245,47 +362,46 @@ int main(int argc,char **argv){ QCoreApplication app(argc,argv); const auto a=ap
           QDir().mkpath(out);
           return historyReport(recordsDir, out, bp, wp, prefix, games, plies).isEmpty() ? 3 : 0;
       }
-      const QString bp=option(a,"--black-worker"),wp=option(a,"--white-worker"),out=option(a,"--out","match.json"); int games=option(a,"--games","2").toInt(),turns=option(a,"--plies","5").toInt(),set=option(a,"--opening-set","4").toInt(); if(bp.isEmpty()||wp.isEmpty()||games<1||turns<1||set<1||set>4)return 2;
+      const QString bp=option(a,"--black-worker"),wp=option(a,"--white-worker"),out=option(a,"--out","match.json"); int games=option(a,"--games","2").toInt(),turns=option(a,"--plies","5").toInt(),set=option(a,"--opening-set","4").toInt(); if(bp.isEmpty()||wp.isEmpty()||games<1||turns<1||set<1||set>8)return 2;
+     const auto baselineConfig = inspectWorker(bp), candidateConfig = inspectWorker(wp);
+     if (baselineConfig.isEmpty() || candidateConfig.isEmpty()) {
+         QTextStream(stderr) << "worker --mode config inspection failed\n"; return 2;
+     }
+     g_workers = QJsonObject{{"baseline", baselineConfig}, {"candidate", candidateConfig}};
      const QString fixtureMode = option(a, "--history-fixtures", "");
+     const QString positionSuite = option(a, "--position-suite", "");
+     if (!positionSuite.isEmpty()) {
+         if (!fixtureMode.isEmpty()) return 2;
+         return runMidgames(positionSuite, out, bp, wp, games, turns);
+     }
      QList<Fixture> fixtures;
      if (!fixtureMode.isEmpty()) {
          if (fixtureMode != "white15" && fixtureMode != "anhui" && fixtureMode != "all") return 2;
-         if (fixtureMode == "white15" || fixtureMode == "all") { auto f = loadFixture("white15", "/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt", 57); if (!f || !f->referee.board[8][6] || !f->referee.board[4][7]) return 2; fixtures.append(*f); }
+         if (fixtureMode == "white15" || fixtureMode == "all") { auto f = loadFixture("white15", qEnvironmentVariable("SIX_WHITE15_RECORD", "/wlf/Six/程序原版压缩包/six/tests/fixtures/white15.txt"), 57); if (!f || !f->referee.board[8][6] || !f->referee.board[4][7]) return 2; fixtures.append(*f); }
          if (fixtureMode == "anhui" || fixtureMode == "all") { auto f = loadFixture("anhui", "/wlf/Six/程序原版压缩包/six/棋谱文件/C6-安徽大学Bvs重师W-先手胜-f.txt", 51); if (!f) return 2; fixtures.append(*f); }
      }
      if (fixtures.isEmpty()) {
-         QJsonArray scenarios; for(const auto &s: {QString("control"),QString("candidate-black"),QString("candidate-white")}){ QJsonObject x{{"scenario",s}}; QJsonArray gs; for(int i=0;i<games;++i){ const bool candidateBlack=s=="candidate-black", candidateWhite=s=="candidate-white"; gs.append(play(candidateBlack?wp:bp,candidateWhite?wp:bp,i,turns,set)); } x["games"]=gs; scenarios.append(x); }
+         QJsonArray scenarios; for(const auto &s: {QString("control"),QString("candidate-black"),QString("candidate-white")}){ QJsonObject x{{"scenario",s}}; QJsonArray gs; for(int i=0;i<games;++i){ const bool candidateBlack=s=="candidate-black", candidateWhite=s=="candidate-white"; gs.append(play(candidateBlack?wp:bp,candidateWhite?wp:bp,i,turns,set));
+             QTextStream(stderr) << s << " game " << i+1 << "/" << games << " " << gs.last().toObject()["result"].toString() << '\n';
+             QFile checkpoint(QFileInfo(out).path()+"/progress.json");
+             if (checkpoint.open(QIODevice::WriteOnly)) checkpoint.write(QJsonDocument(QJsonObject{{"scenario",s},{"finished",i+1},{"requested",games}}).toJson()); } x["games"]=gs; scenarios.append(x); }
          QJsonArray comparisons; const auto controlGames=scenarios[0].toObject()["games"].toArray(), blackGames=scenarios[1].toObject()["games"].toArray(), whiteGames=scenarios[2].toObject()["games"].toArray();
           for(int i=0;i<games;++i){ for(const auto &side : {QString("black"),QString("white")}){ const QJsonObject candidate=side=="black"?blackGames[i].toObject():whiteGames[i].toObject(); const QJsonObject diff=compareTranscript(controlGames[i].toObject(),candidate,side); comparisons.append(QJsonObject{{"game",i+1},{"opening_id",controlGames[i].toObject()["opening_id"]},{"candidate_side",side},{"first_difference",diff.isEmpty()?QJsonValue(QJsonValue::Null):QJsonValue(diff)}}); } }
-          QJsonObject root{{"mode","baseline-vs-candidate"},{"games",games},{"plies",turns},{"opening_set",set},{"scenarios",scenarios},{"comparisons",comparisons}}; QFile f(out); if(!f.open(QIODevice::WriteOnly))return 3; f.write(QJsonDocument(root).toJson(QJsonDocument::Indented)); f.close(); QFile csv(QFileInfo(out).path()+"/match.csv"); if(csv.open(QIODevice::WriteOnly)){csv.write("scenario,game,result,winner\n"); for(auto v:scenarios){auto x=v.toObject();for(auto g:x["games"].toArray()){auto o=g.toObject();csv.write(x["scenario"].toString().toUtf8()+","+QByteArray::number(o["game"].toInt())+","+o["result"].toString().toUtf8()+","+QByteArray::number(o["winner"].toInt())+"\n");}}}
+          QJsonObject root{{"mode","baseline-vs-candidate"},{"games",games},{"plies",turns},{"opening_set",set},{"seed_base",g_seedBase},{"randomize",g_randomize},{"workers",g_workers},{"scenarios",scenarios},{"comparisons",comparisons}}; QFile f(out); if(!f.open(QIODevice::WriteOnly))return 3; f.write(QJsonDocument(root).toJson(QJsonDocument::Indented)); f.close(); QFile csv(QFileInfo(out).path()+"/match.csv"); if(csv.open(QIODevice::WriteOnly)){csv.write("scenario,game,result,winner\n"); for(auto v:scenarios){auto x=v.toObject();for(auto g:x["games"].toArray()){auto o=g.toObject();csv.write(x["scenario"].toString().toUtf8()+","+QByteArray::number(o["game"].toInt())+","+o["result"].toString().toUtf8()+","+QByteArray::number(o["winner"].toInt())+"\n");}}}
           QFile md(QFileInfo(out).path()+"/match.md"); if(md.open(QIODevice::WriteOnly)) md.write(QString("# Baseline vs candidate\n\n- 场景：control、candidate-black、candidate-white（共 %1 组）\n- 每场最多双子回合：%2\n- 固定开局数：%3\n").arg(games*3).arg(turns).arg(set).toUtf8());
-         return 0;
+         return invalidScenarios(scenarios) ? 4 : 0;
      }
      QJsonArray scenarios, comparisons;
      for (const Fixture &fixture : fixtures) {
          const QString candidateSide = fixture.currentColor == "B" ? "black" : "white";
          QJsonArray fixtureGames[3];
          for (int i = 0; i < games; ++i) {
-             fixtureGames[0].append(play(bp, wp, i, turns, set, &fixture));
+             fixtureGames[0].append(play(bp, bp, i, turns, set, &fixture));
              fixtureGames[1].append(play(candidateSide == "black" ? wp : bp, candidateSide == "white" ? wp : bp, i, turns, set, &fixture));
          }
           for (int n = 0; n < 2; ++n) { const QString scenario = n == 0 ? "control" : "candidate-" + candidateSide; QJsonObject x{{"scenario", scenario}, {"fixture", fixture.name}, {"source", fixture.source}, {"prefix_plies", fixture.prefix}, {"current_color", fixture.currentColor}, {"forced_color", fixture.currentColor}, {"games", fixtureGames[n]}}; scenarios.append(x); }
           for (int i = 0; i < games; ++i) { const QJsonObject diff = compareTranscript(fixtureGames[0][i].toObject(), fixtureGames[1][i].toObject(), candidateSide); comparisons.append(QJsonObject{{"fixture",fixture.name},{"game",i+1},{"candidate_side",candidateSide},{"first_difference",diff.isEmpty()?QJsonValue(QJsonValue::Null):QJsonValue(diff)}}); }
      }
-     QJsonObject root{{"mode","baseline-vs-candidate-history"},{"games",games},{"plies",turns},{"history_fixtures",fixtureMode},{"scenarios",scenarios},{"comparisons",comparisons}}; QFile f(out); if(!f.open(QIODevice::WriteOnly))return 3; f.write(QJsonDocument(root).toJson(QJsonDocument::Indented)); f.close();
-     return 0;
-      #if 0
-      /* legacy output path is above; history mode returns before it. */
-     for(int i=0;i<games;++i){
-        const int openingId=controlGames[i].toObject()["opening_id"].toInt();
-        for(const auto &side : {QString("black"),QString("white")}){
-            const QJsonObject candidate=side=="black"?blackGames[i].toObject():whiteGames[i].toObject();
-            const QJsonObject diff=compareTranscript(controlGames[i].toObject(),candidate,side);
-            comparisons.append(QJsonObject{{"game",i+1},{"opening_id",openingId},{"candidate_side",side},{"first_difference",diff.isEmpty()?QJsonValue(QJsonValue::Null):QJsonValue(diff)}});
-        }
-    }
-    QJsonObject root{{"mode","baseline-vs-candidate"},{"games",games},{"plies",turns},{"opening_set",set},{"scenarios",scenarios},{"comparisons",comparisons}}; QFile f(out); if(!f.open(QIODevice::WriteOnly))return 3; f.write(QJsonDocument(root).toJson(QJsonDocument::Indented)); f.close(); QFile csv(QFileInfo(out).path()+"/match.csv"); if(csv.open(QIODevice::WriteOnly)){csv.write("scenario,game,result,winner\n"); for(auto v:scenarios){auto x=v.toObject();for(auto g:x["games"].toArray()){auto o=g.toObject();csv.write(x["scenario"].toString().toUtf8()+","+QByteArray::number(o["game"].toInt())+","+o["result"].toString().toUtf8()+","+QByteArray::number(o["winner"].toInt())+"\n");}}}
-     QFile md(QFileInfo(out).path()+"/match.md"); if(md.open(QIODevice::WriteOnly)) md.write(QString("# Baseline vs candidate\n").toUtf8());
-     #endif
-     return 0;
+     QJsonObject root{{"mode","baseline-vs-candidate-history"},{"games",games},{"plies",turns},{"history_fixtures",fixtureMode},{"seed_base",g_seedBase},{"randomize",g_randomize},{"workers",g_workers},{"scenarios",scenarios},{"comparisons",comparisons}}; QFile f(out); if(!f.open(QIODevice::WriteOnly))return 3; f.write(QJsonDocument(root).toJson(QJsonDocument::Indented)); f.close();
+     return invalidScenarios(scenarios) ? 4 : 0;
  }

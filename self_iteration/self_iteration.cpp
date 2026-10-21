@@ -15,10 +15,13 @@
 #include <vector>
 #include <algorithm>
 #include <cstdlib>
+#include <cmath>
 
 #define private public
 #include "Game.h"
 #undef private
+#include "build_manifest.h"
+#include "openings.h"
 
 namespace {
 int completedDepth = -1;
@@ -26,14 +29,15 @@ void captureDepth(QtMsgType, const QMessageLogContext &, const QString &message)
     const auto match = QRegularExpression("Search completedDepth: (\\d+)").match(message);
     if (match.hasMatch()) completedDepth = match.captured(1).toInt();
 }
-void applySearchConfig(const QStringList &a) {
+bool applySearchConfig(const QStringList &a) {
+    bool valid = true;
     const auto readInt = [&](const char *key, int &field) {
         const int i = a.indexOf(QString::fromLatin1(key));
-        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const int v = a[i + 1].toInt(&ok); if (ok) field = v; }
+        if (i >= 0) { bool ok = false; const int v = a.value(i + 1).toInt(&ok); if (ok && v >= 0) field = v; else valid = false; }
     };
     const auto readI64 = [&](const char *key, qint64 &field) {
         const int i = a.indexOf(QString::fromLatin1(key));
-        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const qint64 v = a[i + 1].toLongLong(&ok); if (ok) field = v; }
+        if (i >= 0) { bool ok = false; const qint64 v = a.value(i + 1).toLongLong(&ok); if (ok && v >= 0) field = v; else valid = false; }
     };
     readI64("--time-limit", Game::searchConfig.timeLimitMs);
     readI64("--probe-budget", Game::searchConfig.probeBudgetMs);
@@ -54,14 +58,53 @@ void applySearchConfig(const QStringList &a) {
     readInt("--seed", Game::searchConfig.randomSeed);
     {
         const int i = a.indexOf(QString::fromLatin1("--random-temp"));
-        if (i >= 0 && i + 1 < a.size()) { bool ok = false; const double v = a[i + 1].toDouble(&ok); if (ok) Game::searchConfig.randomTemp = v; }
+        if (i >= 0) { bool ok = false; const double v = a.value(i + 1).toDouble(&ok); if (ok) Game::searchConfig.randomTemp = v; else valid = false; }
     }
     if (a.contains("--tt-off")) Game::searchConfig.ttEnabled = false;
+#if SIX_HAS_INCREMENTAL_TACTICS
+    if (a.contains("--incremental-tactics")) Game::searchConfig.incrementalTactics = true;
+    if (a.contains("--no-incremental-tactics")) Game::searchConfig.incrementalTactics = false;
+#else
+    if (a.contains("--incremental-tactics") || a.contains("--no-incremental-tactics")) valid = false;
+#endif
+#if SIX_HAS_THREAT_EXTENSION
+    if (a.contains("--no-threat-extend")) Game::searchConfig.threatExtension = false;
     if (a.contains("--threat-extend")) Game::searchConfig.threatExtension = true;
     readInt("--threat-max", Game::searchConfig.threatExtendMax);
     readInt("--threat-budget", Game::searchConfig.threatExtendBudget);
+#else
+    if (a.contains("--threat-extend") || a.contains("--no-threat-extend")
+        || a.contains("--threat-max") || a.contains("--threat-budget")) valid = false;
+#endif
+    const int wi = a.indexOf("--shape-weights");
+    if (wi >= 0) {
+#if SIX_HAS_SHAPE_WEIGHTS
+        const QStringList values = a.value(wi + 1).split(',');
+        int *fields[] = {&Game::searchConfig.shapeSingle, &Game::searchConfig.shapeOpenTwo,
+            &Game::searchConfig.shapeClosedThree, &Game::searchConfig.shapeOpenThree,
+            &Game::searchConfig.shapeClosedFour, &Game::searchConfig.shapeOpenFour,
+            &Game::searchConfig.shapeFive, &Game::searchConfig.shapeSix};
+        if (values.size() != 8) valid = false;
+        else for (int k = 0; k < 8; ++k) {
+            bool ok = false; const int v = values[k].toInt(&ok);
+            if (!ok || v < 1 || v > 100000) valid = false;
+            else *fields[k] = v;
+        }
+#else
+        valid = false;
+#endif
+    }
+    const auto &c = Game::searchConfig;
+    valid = valid && c.timeLimitMs > 0 && c.maxDepth > 0 && c.maxDepth <= 64
+        && c.rootMaxPoints >= 2 && c.rootMaxPoints <= 361 && c.rootMaxPairs > 0
+        && c.innerPoints >= 2 && c.innerPoints <= 361 && c.innerPairsDeep > 0
+        && c.innerPairsShallow > 0 && c.probePoints >= 2 && c.probePoints <= 361
+        && c.probeReplies > 0 && c.qMaxDefenses > 0 && c.randomTopN > 0
+        && std::isfinite(c.randomTemp) && c.randomTemp > 0;
+    if (!valid) { QTextStream(stderr) << "invalid search configuration or obsolete shape weights\n"; return false; }
     if (Game::searchConfig.randomSeed != 0)
         Game::seedRandom(static_cast<unsigned>(Game::searchConfig.randomSeed));
+    return true;
 }
 struct Referee {
     std::array<std::array<int, 19>, 19> board{};
@@ -165,7 +208,6 @@ QJsonObject exhaustiveOneLayer(const Referee &before, int attacker, int deadline
         {"total", total}, {"refutations", refutations}, {"witness", witness}, {"elapsed_ms", timer.elapsed()}};
 }
 
-QString sha(const QString &path) { QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {}; return QString::fromLatin1(QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex()); }
 QString pt(QPoint p) { return QString(QChar('A' + p.y())) + QString::number(19 - p.x()); }
 QJsonArray points(const std::vector<QPoint> &ps) { QJsonArray a; for (auto p : ps) a.append(pt(p)); return a; }
 QString status(const Referee &before, int color, const std::vector<QPoint> &move, int &illegal, int oracleMs) {
@@ -246,13 +288,7 @@ QJsonObject runCritical(const QString &path, int prefix, int forcedColor, bool w
     }
     return r;
 }
-QVector<QPoint> forcedOpening(int openingId) {
-    if (openingId == 0) return {QPoint(9, 8), QPoint(7, 10)};    // I10, K12
-    if (openingId == 1) return {QPoint(12, 11), QPoint(5, 7)};   // L7, H14
-    if (openingId == 2) return {QPoint(8, 7), QPoint(10, 11)};   // H11, L9
-    if (openingId == 3) return {QPoint(11, 6), QPoint(7, 12)};   // G8, M12
-    return {};
-}
+QVector<QPoint> forcedOpening(int openingId) { return experimentOpening(openingId); }
 bool validOpening(int openingId) {
     const QVector<QPoint> opening = forcedOpening(openingId);
     if (opening.size() != 2) return false;
@@ -284,6 +320,75 @@ QJsonObject runGame(int index, int maxPlies, int openingSet, const QString &sour
     r["result"] = complete ? (p.winner ? (p.winner == 1 ? "black_win" : "white_win") : "draw") : "unfinished"; r["winner"] = p.winner; r["illegal"] = illegal; r["direct_wins"] = directWin; r["direct_losses"] = directLoss; r["one_layer_refuted"] = refuted; r["elapsed_ms"] = double(elapsed); r["moves"] = moves; return r;
 }
 bool write(const QString &path, const QByteArray &data) { QFile f(path); return f.open(QIODevice::WriteOnly) && f.write(data) == data.size(); }
+
+QJsonObject searchStatsJson(const Game &game) {
+#if SIX_HAS_SEARCH_STATS
+    const auto &s = game.searchStats();
+    QJsonArray iterations;
+    for (const auto &i : s.iterations)
+        iterations.append(QJsonObject{{"depth", i.depth}, {"complete", i.complete},
+            {"nodes", double(i.nodes)}, {"tt_hits", double(i.ttHits)}, {"root_moves", i.rootMoves},
+            {"extensions_used", i.extensionsUsed}, {"q_nodes", i.qNodes}, {"elapsed_ms", double(i.elapsedMs)}});
+    return {{"nodes", double(s.nodes)}, {"tt_probes", double(s.ttProbes)},
+        {"tt_hits", double(s.ttHits)}, {"tt_stores", double(s.ttStores)},
+        {"completed_depth", s.completedDepth}, {"extensions_used", s.extensionsUsed},
+        {"root_candidates", s.rootCandidates}, {"root_survivors", s.rootSurvivors},
+        {"root_excluded", s.rootExcluded}, {"root_unknown", s.rootUnknown},
+        {"precheck_ms", double(s.precheckMs)}, {"elapsed_ms", double(s.elapsedMs)},
+        {"stop_reason", QString::fromLatin1(s.stopReason)}, {"iterations", iterations}};
+#else
+    Q_UNUSED(game);
+    return {};
+#endif
+}
+
+int inspectPosition(const QStringList &arguments) {
+    QFile input(option(arguments, "--position-json", ""));
+    if (!input.open(QIODevice::ReadOnly)) return 2;
+    QJsonParseError parseError;
+    const auto document = QJsonDocument::fromJson(input.readAll(), &parseError);
+    const auto spec = document.object();
+    const auto prefix = spec["prefix_moves"].toArray();
+    if (parseError.error != QJsonParseError::NoError || prefix.isEmpty()
+        || prefix.size() % 2 != 1 || prefix.first().toString() != "J10") return 2;
+    const QRegularExpression notation("^([A-S])(1[0-9]|[1-9])$");
+    Referee before;
+    QStringList notationMoves;
+    for (const auto &value : prefix) {
+        const auto match = notation.match(value.toString());
+        if (!match.hasMatch()) return 2;
+        const QPoint p(19 - match.captured(2).toInt(), match.captured(1)[0].unicode() - 'A');
+        const int color = before.stones == 0 ? 1 : (((before.stones - 1) / 2) % 2 == 0 ? 2 : 1);
+        if (!before.put(p, color) || before.winner) return 2;
+        notationMoves.append(value.toString());
+    }
+    const QString hash = QString::fromLatin1(QCryptographicHash::hash(
+        notationMoves.join(' ').toLatin1(), QCryptographicHash::Sha256).toHex());
+    const int color = ((before.stones - 1) / 2) % 2 == 0 ? 2 : 1;
+    const QString current = color == 1 ? "B" : "W";
+    if ((spec.contains("prefix_sha256") && spec["prefix_sha256"].toString() != hash)
+        || (spec.contains("current_color") && spec["current_color"].toString() != current)) return 2;
+    const int oracleMs = option(arguments, "--oracle-ms", "1000").toInt();
+    if (oracleMs < 1) return 2;
+    Game game;
+    for (int x = 0; x < 19; ++x) for (int y = 0; y < 19; ++y) game.m_chess[x][y] = before.board[x][y];
+    game.m_type = color; game.m_step = 0; game.rebuildSearch();
+    std::vector<QPoint> move;
+    QObject::connect(&game, &Game::chessChange, [&](QPoint p, int c) { if (c == color) move.push_back(p); });
+    game.bestPlay();
+    int illegal = 0;
+    const QString checked = status(before, color, move, illegal, oracleMs);
+    const QJsonObject result{{"mode", "position"}, {"id", spec["id"]}, {"prefix_moves", prefix},
+        {"prefix_sha256", hash}, {"current_color", current}, {"move", points(move)},
+        {"score", game.m_chosenMove.score()}, {"status", checked}, {"illegal", illegal},
+        {"search_stats", searchStatsJson(game)}, {"search_config", searchConfigJson()},
+        {"compiled_sources", compiledSourceHashes()}};
+    const QByteArray json = QJsonDocument(result).toJson(QJsonDocument::Indented);
+    const QString output = option(arguments, "--out", "");
+    if (!output.isEmpty() && !write(output, json)) return 3;
+    QTextStream(stdout) << json;
+    return illegal ? 4 : 0;
+}
 
 bool parseWorkerBoard(const QStringList &tokens, int &color, int board[19][19]) {
     if (tokens.size() != 363 || (tokens[1] != "B" && tokens[1] != "W")) return false;
@@ -448,6 +553,7 @@ QJsonObject runTactics(const QStringList &arguments) {
         entry["unavoidable"] = unavoidable;
         entry["elapsed_ms"] = double(elapsed);
         entry["completed_depth"] = completedDepth;
+        entry["search_stats"] = searchStatsJson(game);
         entry["score"] = chosenScore;
         entry["declared_loss"] = declaredLoss;
         entry["result"] = result;
@@ -455,6 +561,7 @@ QJsonObject runTactics(const QStringList &arguments) {
     }
     QJsonObject root{{"mode", "tactics"}, {"suite", suitePath},
                      {"time_limit_ms", double(Game::searchConfig.timeLimitMs)}, {"oracle_ms", oracleMs},
+                     {"search_config", searchConfigJson()}, {"compiled_sources", compiledSourceHashes()},
                      {"pass", pass}, {"fail", fail}, {"unknown", unknown}, {"lost", lost},
                      {"control", control}, {"invalid", invalid}, {"positions", results}};
     if (!write(QDir(out).filePath("tactics.json"), QJsonDocument(root).toJson(QJsonDocument::Indented))) return {};
@@ -477,37 +584,53 @@ QJsonObject runTactics(const QStringList &arguments) {
 
 int main(int argc, char **argv) {
     qputenv("QT_QPA_PLATFORM", "offscreen"); QApplication app(argc, argv); QTimer dialogCloser; closeResultDialogs(dialogCloser); qInstallMessageHandler(captureDepth); const QStringList a = args();
-    applySearchConfig(a);
-    if (option(a, "--mode", "") == "tactics") { const QJsonObject t = runTactics(a); return t.isEmpty() ? 3 : 0; }
+    if (!applySearchConfig(a)) return 2;
+    if (option(a, "--mode", "") == "config") {
+        const auto config = searchConfigJson();
+        const bool effectiveTt = config["ttEnabled"].toBool() && !config["threatExtension"].toBool();
+        const QString hash = QString::fromLatin1(QCryptographicHash::hash(
+            QJsonDocument(config).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex());
+        QTextStream(stdout) << QJsonDocument(QJsonObject{{"search_config", config},
+            {"config_sha256", hash}, {"compiled_sources", compiledSourceHashes()},
+            {"tt_effective", effectiveTt},
+            {"tt_policy", effectiveTt ? "ordinary" : "disabled"},
+            {"qt_version", qVersion()}}).toJson(QJsonDocument::Compact) << '\n';
+        return 0;
+    }
+    if (option(a, "--mode", "") == "tactics") { const QJsonObject t = runTactics(a); return t.isEmpty() ? 3 : (t["fail"].toInt() || t["unknown"].toInt() || t["invalid"].toInt() ? 4 : 0); }
+    if (option(a, "--mode", "") == "position") return inspectPosition(a);
     if (option(a, "--mode", "") == "worker") return runWorker(a);
     if (option(a, "--mode", "") != "baseline") { QTextStream(stderr) << "only --mode baseline is supported\n"; return 2; }
     const int games = option(a, "--games", "2").toInt(), plies = option(a, "--plies", "30").toInt(), openingSet = option(a, "--opening-set", "0").toInt(); const QString out = option(a, "--out", "");
-    if (games < 1 || games > 40 || (openingSet != 0 && openingSet != 1 && openingSet != 2 && openingSet != 4) || plies < 1 || plies > 30 || out.isEmpty() || !QDir(out).exists()) { QTextStream(stderr) << "unsupported parameters or output directory\n"; return 2; }
+    if (games < 1 || games > 40 || (openingSet < 0 || openingSet > 8) || plies < 1 || plies > 30 || out.isEmpty() || !QDir(out).exists()) { QTextStream(stderr) << "unsupported parameters or output directory\n"; return 2; }
     if (openingSet) for (int id = 0; id < openingSet; ++id) if (!validOpening(id)) { QTextStream(stderr) << "invalid fixed opening: " << id << '\n'; return 2; }
     const bool criticalRegression = !a.contains("--no-critical-regression");
     const QString fixtureRoot = option(a, "--fixture-root", "/wlf/Six/程序原版压缩包/six");
-    const QString sourceRoot = option(a, "--source-root", fixtureRoot);
+
     const QStringList fixtures = {"棋谱文件/C6-重师Bvs北京信息科技大学W-先手胜-祁门一中.txt", "棋谱文件/C6-北京信息科技大学Bvs重师W-后手胜-祁门一中.txt", "棋谱文件/C6-重师Bvs吉林大学一队W-后手胜-祁门一中.txt", "棋谱文件/C6-重师Bvs安庆师范大学W-后手胜-祁门一中.txt"};
     const QList<int> prefixes = {8, 16, 24, 12}; QJsonArray positions; for (int i = 0; i < fixtures.size(); ++i) positions.append(runPosition(fixtures[i], prefixes[i], fixtureRoot));
     QJsonArray critical; bool criticalFailed = false;
     if (criticalRegression) {
-        const QString white15 = "/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt";
+        const QString white15 = qEnvironmentVariable("SIX_WHITE15_RECORD", QDir(fixtureRoot).filePath("tests/fixtures/white15.txt"));
         const QString historical = "/wlf/Six/程序原版压缩包/six/棋谱文件/C6-安徽大学Bvs重师W-先手胜-f.txt";
         critical.append(runCritical(white15, 57, 2, true));
         critical.append(runCritical(historical, 51, 2, false, "historical_next_move"));
         for (const auto &v : critical) criticalFailed |= v.toObject()["failed"].toBool();
     }
-    const QString gameHash = sha(QDir(sourceRoot).filePath("Game.cpp"));
-    const QString headerHash = sha(QDir(sourceRoot).filePath("Game.h"));
-    const QString moveHash = sha(QDir(sourceRoot).filePath("Move.cpp"));
-    const QString configHash = QString::fromLatin1(QCryptographicHash::hash("default_game_params:time=2000;board=19;win=6;one_layer=2000", QCryptographicHash::Sha256).toHex());
+    const auto sources = compiledSourceHashes();
+    const QString gameHash = sources["Game.cpp"].toString();
+    const QString headerHash = sources["Game.h"].toString();
+    const QString moveHash = sources["Move.cpp"].toString();
+    const QJsonObject config = searchConfigJson();
+    const QString configHash = QString::fromLatin1(QCryptographicHash::hash(
+        QJsonDocument(config).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex());
     QJsonArray gamesOut; for (int i = 0; i < games; ++i) gamesOut.append(runGame(i, plies, openingSet, gameHash, configHash));
     int illegal = 0, directWins = 0, directLosses = 0, unfinished = 0;
     for (const auto &v : positions) { const auto o = v.toObject(); illegal += o["illegal"].toInt(); }
     for (const auto &v : gamesOut) { const auto o = v.toObject(); illegal += o["illegal"].toInt(); directWins += o["direct_wins"].toInt(); directLosses += o["direct_losses"].toInt(); unfinished += o["result"].toString() == "unfinished"; }
-     QJsonObject result{{"mode", "baseline"}, {"position_tests", positions.size()}, {"games_requested", games}, {"plies_requested", plies}, {"opening_set", openingSet}, {"critical_regression", criticalRegression}, {"critical_failed", criticalFailed}, {"illegal_count", illegal}, {"direct_win_count", directWins}, {"direct_loss_count", directLosses}, {"unfinished_count", unfinished}, {"time_budget_ms", 2000}, {"source_sha256_game", gameHash}, {"source_sha256_header", headerHash}, {"source_sha256_move", moveHash}, {"config_sha256", configHash}, {"qt_version", qVersion()}, {"compiler", "not_recorded"}, {"build_abi", QSysInfo::buildAbi()}, {"positions", positions}, {"games", gamesOut}, {"critical_regressions", critical}};
+     QJsonObject result{{"mode", "baseline"}, {"position_tests", positions.size()}, {"games_requested", games}, {"plies_requested", plies}, {"opening_set", openingSet}, {"critical_regression", criticalRegression}, {"critical_failed", criticalFailed}, {"illegal_count", illegal}, {"direct_win_count", directWins}, {"direct_loss_count", directLosses}, {"unfinished_count", unfinished}, {"time_budget_ms", double(Game::searchConfig.timeLimitMs)}, {"search_config", config}, {"compiled_sources", sources}, {"source_sha256_game", gameHash}, {"source_sha256_header", headerHash}, {"source_sha256_move", moveHash}, {"config_sha256", configHash}, {"qt_version", qVersion()}, {"compiler", "not_recorded"}, {"build_abi", QSysInfo::buildAbi()}, {"positions", positions}, {"games", gamesOut}, {"critical_regressions", critical}};
     if (!write(QDir(out).filePath("baseline.json"), QJsonDocument(result).toJson(QJsonDocument::Indented))) return 3;
     QByteArray csv = "kind,id,status,elapsed_ms,illegal\n"; for (const auto &v : positions) { const auto o = v.toObject(); csv += "position," + QByteArray::number(o["prefix_plies"].toInt()) + "," + o["status"].toString().toLatin1() + "," + QByteArray::number(o["elapsed_ms"].toDouble()) + "," + QByteArray::number(o["illegal"].toInt()) + "\n"; } for (const auto &v : gamesOut) { const auto o = v.toObject(); csv += "game," + QByteArray::number(o["game"].toInt()) + "," + o["result"].toString().toLatin1() + "," + QByteArray::number(o["elapsed_ms"].toDouble()) + "," + QByteArray::number(o["illegal"].toInt()) + "\n"; } if (!write(QDir(out).filePath("baseline.csv"), csv)) return 3;
-    const QString md = QString("# 自动迭代基线\n\n- 局面测试：%1\n- 自对弈：%2 局，每局最多 %3 双子回合\n- 预算：2000 ms/步\n- Game.cpp SHA256：`%4`\n- Move.cpp SHA256：`%5`\n- 配置 SHA256：`%6`\n\n完整明细见 `baseline.json`，表格见 `baseline.csv`。`unfinished`、`unknown`、超时和非法均不判胜。\n").arg(positions.size()).arg(games).arg(plies).arg(result["source_sha256_game"].toString(), result["source_sha256_move"].toString(), result["config_sha256"].toString()); if (!write(QDir(out).filePath("baseline.md"), md.toUtf8())) return 3;
+    const QString md = QString("# 自动迭代基线\n\n- 局面测试：%1\n- 自对弈：%2 局，每局最多 %3 双子回合\n- 预算：%7 ms/步\n- Game.cpp SHA256：`%4`\n- Move.cpp SHA256：`%5`\n- 配置 SHA256：`%6`\n\n完整明细见 `baseline.json`，表格见 `baseline.csv`。`unfinished`、`unknown`、超时和非法均不判胜。\n").arg(positions.size()).arg(games).arg(plies).arg(result["source_sha256_game"].toString(), result["source_sha256_move"].toString(), result["config_sha256"].toString()).arg(Game::searchConfig.timeLimitMs); if (!write(QDir(out).filePath("baseline.md"), md.toUtf8())) return 3;
     QTextStream(stdout) << QJsonDocument(result).toJson(QJsonDocument::Compact) << '\n'; return illegal || criticalFailed ? 4 : 0;
 }
