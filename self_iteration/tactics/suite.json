@@ -347,7 +347,7 @@
     },
     {
       "id": "white15-prefix57",
-      "file": "/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt",
+      "file": "tests/fixtures/white15.txt",
       "stones": 57,
       "color": 2,
       "expected": "safe_one_reply",
@@ -355,7 +355,7 @@
     },
     {
       "id": "turn17-prefix31",
-      "file": "/wlf/Six/程序原版压缩包/six/build/Desktop_Qt_6_11_1-Release/棋谱文件/C6-sixBvshumanW-先手胜-06.txt",
+      "file": "tests/fixtures/turn17.txt",
       "stones": 31,
       "color": 1,
       "expected": "safe_one_reply",
