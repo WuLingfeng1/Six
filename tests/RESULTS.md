@@ -1,5 +1,78 @@
 # Completed Verification
 
+## Experiment Reliability Revision (2026-10-21)
+
+The old `self_iteration.pro` unconditionally assigned `GAME_DIR = ..`,
+overriding the candidate source directory passed to qmake. Archived A/B
+Makefiles confirm that both workers compiled production `Game.cpp`.
+**Earlier candidate A/B gains, including the +3/+1 threat-extension results
+below, are withdrawn as evidence of strength.** Source-copy hashes did not
+establish which inputs were actually compiled. Historical test runs remain
+listed below; cross-version comparisons require verified build provenance.
+
+The worker now preserves the candidate directory and prioritizes its headers.
+It embeds build-time source hashes and serializes the complete runtime
+SearchConfig; every candidate build verifies both before an experiment.
+The eight weights actually used by `lineShape()` are configurable, with all
+production defaults preserved. Obsolete seven-value road-weight patches are
+rejected. Critical fixtures are bundled under `tests/fixtures/`.
+
+Fresh Release/O2 GUI and offline-test builds used Qt 6.11.1, linux-clang:
+
+```text
+Totals: 40 passed, 0 failed, 0 skipped, 0 blacklisted, 55547ms
+```
+
+The new `configurableShapeWeights` test checks changed evaluation weights,
+incremental placement/undo, and evaluation sign. The existing rule, tactical,
+critical-position, incremental-score and GUI tests also passed.
+
+Separately built HEAD and working-tree engines have different verified source
+hashes. With `--games 4 --plies 4 --opening-set 4 --max-depth 4 --time-limit 60000`,
+all four self-play transcripts and four historical fixture moves were identical.
+Runtime overrides changed the config hash; invalid parameters were rejected;
+JSON and Markdown reported the actual search budget.
+
+Current critical regression: `critical_failed=false`, `illegal_count=0`.
+Current 45-position tactics suite: `28 pass, 0 fail, 0 unknown, 10 lost,
+7 control, 0 invalid`. Lost positions remain separate from passes.
+
+Tool checks: five parameter-patching tests, three malformed-worker protocol
+cases and three replay tests passed. A make-only rebuild after a candidate
+header change updated both the effective parameter and embedded source hash.
+End-to-end scan and iteration smoke runs passed their critical gates; the
+candidate's open-four weight actually changed from 20000 to 27759. Iteration
+correctly retained the baseline with first-group/confirmation net 0/0. All nine
+smoke-game transcripts also passed independent replay.
+
+Fresh threat-extension A/B compared the same current source with the switch
+off/on, eight openings, 2000ms and depth 6, serial execution. Each seed group
+ran eight games in each of three scenarios (control, candidate black, candidate
+white), capped at 30 double turns:
+
+| Seed base | Control B/W/unfinished | Candidate black B/W/unfinished | Candidate white B/W/unfinished | Net |
+| --- | --- | --- | --- | ---: |
+| 201 | 3/2/3 | 5/2/1 | 3/4/1 | +4 |
+| 301 | 5/2/1 | 6/2/0 | 5/2/1 | +1 |
+
+All 48 transcripts passed an independent Python replay of coordinates, turns,
+six-in-a-row, terminal handling and reported outcomes. There were no illegal
+moves, timeouts or worker-start failures; seven games remained unfinished.
+Both groups had 13/16 candidate/control transcript divergences. The only
+SearchConfig difference was `threatExtension`; effective TT use was on/off
+respectively, so this measures the existing combined behavior. Net +5 is a
+small-sample win-count difference against each group's control, not a win rate
+or statistical significance claim. The existing production default is retained.
+
+Evidence is retained in `self_iteration/reports/reliability-20261021/`:
+`tests/results.txt`, `equivalence/validation.json`, the two worker manifests,
+`critical/baseline.json`, `tactics/tactics.json`, both `threat-seed*/` directories,
+and the independently verified `threat-summary.json`. `validation-summary.json`
+collects the checks; `final-source-fingerprints.json` records final engine/tool
+inputs. Pipeline smoke evidence is in `manifest-rebuild/`, `scan-smoke/` and
+`iterate-smoke/`.
+The current experiment procedure is in `self_iteration/运行手册.md`.
+
 ## Threat-Extension Revision (2026-10-20)
 
 Scope: `Game.cpp` / `Game.h` add an opt-in threat extension (enabled by default

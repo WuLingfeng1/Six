@@ -1,3 +1,13 @@
+# 当前实验入口（2026-10-21）
+
+当前命令、8 项有效棋型权重、构建验证与报告说明见 [运行手册](运行手册.md)。
+
+扩展评测入口为 `validation_runner.py`：固定八个中盘前缀，候选分别执黑、执白真实续弈；
+默认新增两组开局种子与两组中盘种子，共 96 盘。选取规则、构建命令、独立重放和续跑约束见
+[中盘评测说明](midgames/README.md)。
+
+**历史 A/B 证据更正：**旧 `self_iteration.pro` 的 `GAME_DIR = ..` 覆盖了命令行候选目录。已保存的 `reports/threat-20/{old,new}-build/Makefile` 两侧都编译生产 `Game.cpp`。此前通过该工程产生的候选/历史版本 A/B，不能证明候选参数、评估改动或威胁延伸的收益。原始数据保留；后续只使用通过 `verify_worker.py` 核验的构建。新结果见 `reports/reliability-20261021/`。
+
 # 小规模自动迭代基线
 
 ## Release 历史失败分析器
@@ -48,7 +58,7 @@ QT_QPA_PLATFORM=offscreen /tmp/opencode/six-self-iteration/self_iteration \
 
 `baseline.json` 的 `critical_regressions` 包含两个完整 oracle 检查：白 15 棋谱前 57 子（确认黑方包含 `G11,H15`），以及安徽大学棋谱前 51 子并强制设置白方。每个结果记录生产 `bestPlay` 新着、`status`、`oracle.checked`、`oracle.witness`；完整双子枚举截止为 2 秒，`unknown` 也会触发 `critical_failed`。白 15 关键门槛必须安全；历史局面若前置局面已存在不可避免的不可防局面则记为 `unavoidable`，不淘汰候选。
 
-`--opening-set 0` 保持原有自对弈流程，不强制开局。设置为 1、2 或 4 时，每局按零基 `game_index % opening_set` 选择固定白方首个双子；黑方仍严格落中心 `J10`。开局 0 为 `I10,K12`（内部 `(9,8),(7,10)`），开局 1 为 `H11,L9`（内部 `(8,7),(10,11)`），开局 2 为 `G8,M12`（内部 `(11,6),(7,12)`），开局 3 为 `L7,H14`（内部 `(12,11),(5,7)`）。独立 `Referee` 严格执行黑中心和白双子，检查坐标、空位、回合颜色、棋子数和未终局；任一固定开局非法则程序直接退出，再从黑方回合调用真实 `Game`。强制开局不计入直接胜/直接漏防样本。每个 `games[]` 条目包含 `opening_id`、棋谱坐标 `opening_moves`、包含开局的完整棋谱坐标 `moves`、`source_sha256_game` 和 `config_sha256`；顶层也报告 `opening_set`。
+`--opening-set 0` 保持原有自对弈流程，不强制开局。设置为 1、2 或 4 时，每局按零基 `game_index % opening_set` 选择固定白方首个双子；黑方仍严格落中心 `J10`。开局 0 为 `I10,K12`（内部 `(9,8),(7,10)`），开局 1 为 `L7,H14`（内部 `(12,11),(5,7)`），开局 2 为 `H11,L9`（内部 `(8,7),(10,11)`），开局 3 为 `G8,M12`（内部 `(11,6),(7,12)`）。独立 `Referee` 严格执行黑中心和白双子，检查坐标、空位、回合颜色、棋子数和未终局；任一固定开局非法则程序直接退出，再从黑方回合调用真实 `Game`。强制开局不计入直接胜/直接漏防样本。每个 `games[]` 条目包含 `opening_id`、棋谱坐标 `opening_moves`、包含开局的完整棋谱坐标 `moves`、`source_sha256_game` 和 `config_sha256`；顶层也报告 `opening_set`。
 
 按当前默认生产源构建并运行两局 smoke：
 
@@ -76,7 +86,7 @@ QT_QPA_PLATFORM=offscreen /tmp/opencode/six-self-iteration-smoke/self_iteration 
 
 ## 候选参数 smoke 实验
 
-`candidate_runner.sh` 只在 `/tmp/six-candidates/` 下创建候选副本和报告。候选只替换 `Game.h` 中两个评分数组的 7 个权重；替换要求每个数组的完整原始声明严格匹配一次，否则候选失败。默认运行 1 局、5 个双子回合：
+`candidate_runner.sh` 在 `self_iteration/reports/` 下创建候选副本和报告。候选通过 `config_tools.py` 修改 `SearchConfig` 的 8 个实际棋型权重及搜索参数，完整校验通过后才写入副本。默认运行 1 局、5 个双子回合：
 
 ```bash
 ./candidate_runner.sh --games 1 --plies 5 --opening-set 0

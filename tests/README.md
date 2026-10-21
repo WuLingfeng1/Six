@@ -18,7 +18,7 @@ in the test translation unit to check restoration.
 | `halfTurnTactics` | Both colors: one-stone win, forced defense, two holes cannot be completed in a half turn; `ourplay()` forwards the default request correctly |
 | `white15Oracle` | Exact record prefix and independent known losing `E9 G18 + F11 F13` versus coverable `E9 F14 + F11 F13` |
 | `white15Search` | Real offline `bestPlay()`, 2000ms budget, legal white pair and actual black/step-0 handoff; reject known losing pairs; all 45,451 legal black pairs independently checked |
-| `pairDeltaAndAntisymmetry` | Full six-window recomputation versus pair delta, reversed order, same point, occupied points, four directions, edges, evaluation antisymmetry, no state mutation |
+| `pairDeltaAndAntisymmetry` | Independent continuous-run recomputation versus pair delta, reversed order, same point, occupied points, four directions, edges, evaluation antisymmetry, no state mutation |
 | `incrementalScoreConsistency` | Seeded random boards: `evaluateBoard`/`evaluatePoint` for every empty point and seeded pairs versus independent `fullScore`; `set/add/retract/gameundo`; real Anqing `bestPlay`; timed `negamax`; cache does not mutate board/search/turn state |
 | `timeoutRestoration` | Real depth-6 search times out at 2000ms; board, ordered search list, type, step and last/previous points restored |
 | `undoRebuild` | Undo removes remote stone and stale proximity points; expected radius-two square independently constructed; empty board rebuild empty |
@@ -36,8 +36,9 @@ has no immediate counter-win. This is a one-response tactical guarantee for the
 tested position, not a proof of a full-game win or arbitrary-depth safety.
 
 Coordinates follow Chequer's record loading: `(19 - row number, column - 'A')`.
-The record is read from the user's full absolute path, not a copied/fabricated
-fixture. Missing or incorrect inputs fail tests rather than skip them. The first
+The default records are byte-for-byte historical copies in `tests/fixtures/`
+with original paths and SHA256 recorded in its README. `SIX_WHITE15_RECORD` and
+`SIX_TURN17_RECORD` can override these defaults. Missing or incorrect inputs fail tests rather than skip them. The first
 57 legal stones must end with black15 `G11 H15`, immediately before white15.
 
 `bestPlay()` in this target commits stones and changes `m_type/m_step`; tests do
@@ -45,6 +46,23 @@ not reuse client network-mode assertions that leave turn state unchanged.
 QTimer/QObject closes result and close-confirmation QMessageBoxes with Discard.
 Save signals are checked to remain absent. No mouse input or file-save dialog is
 used. The known unowned final Chequer Game is explicitly freed by the window test.
+
+## Reproducible Release run (current)
+
+From the standalone source directory:
+
+```bash
+mkdir -p self_iteration/reports/release-gui self_iteration/reports/release-tests
+/opt/Qt/6.11.1/gcc_64/bin/qmake -spec linux-clang six.pro -o self_iteration/reports/release-gui/Makefile CONFIG+=release CONFIG-=debug
+make -C self_iteration/reports/release-gui -j4
+/opt/Qt/6.11.1/gcc_64/bin/qmake -spec linux-clang tests/offline_tests.pro -o self_iteration/reports/release-tests/Makefile CONFIG+=release CONFIG-=debug
+make -C self_iteration/reports/release-tests -j4
+QT_QPA_PLATFORM=offscreen SIX_GUI_BINARY="$PWD/self_iteration/reports/release-gui/six" SIX_GUI_WORKDIR="$PWD" timeout 180s self_iteration/reports/release-tests/offline_tests -o self_iteration/reports/release-tests/results.txt,txt
+```
+
+`configurableShapeWeights` also checks that nondefault weights change real board
+and move scores, including cache updates and undo. The full suite currently has
+40 passing QtTest results including lifecycle entries.
 
 ## Build
 
@@ -91,11 +109,11 @@ target. None were manually edited.
 
 ## Run
 
-From `/wlf/Six/程序原版压缩包/six`, so relative GUI assets can be located:
+From `/wlf/Six/程序原版压缩包/six`, the working directory for record operations (images are embedded Qt resources):
 
 ```bash
 export QT_QPA_PLATFORM=offscreen
-export SIX_WHITE15_RECORD='/wlf/Six/server/six_server/build/Desktop_Qt_6_11_1-Debug/棋谱文件/C6-serverBvscilentW-先手胜-.txt'
+# Historical fixtures default to tests/fixtures; no external /tmp input is needed.
 export SIX_GUI_WORKDIR='/wlf/Six/程序原版压缩包/six'
 export SIX_GUI_BINARY=/tmp/opencode/six-offline-debug/six
 timeout 120s /tmp/opencode/six-offline-tests-debug/offline_tests -o /tmp/opencode/six-offline-tests-debug/results.txt,txt
